@@ -1,0 +1,6 @@
+target ssid: DRONE-01
+~~target bssid: 6e:10:c4:b6:81:af~~
+pi3bip:192.168.0.243
+pi3b: signal -43 dBm, scan 0.93s
+pi3b cal: 1m -28, 2m -48, 3m -51, 5m -52.5, 10m -56 / P0 -34.5, n 2.5, sigma 5dB
+arduinounoQ cal: 1m -30, 2m -38, 3m -42, 5m -46
