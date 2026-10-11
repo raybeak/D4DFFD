@@ -1,0 +1,38 @@
+[
+  {
+    "timestamp": 100.0,
+    "receiver_id": "r1",
+    "emitter_id": "test_emitter",
+    "value": null,
+    "unit": "synthetic_unit",
+    "quality": "VALID",
+    "invalid_value": "NaN"
+  },
+  {
+    "timestamp": 100.0,
+    "receiver_id": "r2",
+    "emitter_id": "test_emitter",
+    "value": null,
+    "unit": "synthetic_unit",
+    "quality": "VALID",
+    "invalid_value": "NaN"
+  },
+  {
+    "timestamp": 100.0,
+    "receiver_id": "r3",
+    "emitter_id": "test_emitter",
+    "value": null,
+    "unit": "synthetic_unit",
+    "quality": "VALID",
+    "invalid_value": "NaN"
+  },
+  {
+    "timestamp": 100.0,
+    "receiver_id": "r4",
+    "emitter_id": "test_emitter",
+    "value": null,
+    "unit": "synthetic_unit",
+    "quality": "VALID",
+    "invalid_value": "NaN"
+  }
+]

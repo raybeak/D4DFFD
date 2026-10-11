@@ -1,0 +1,6 @@
+scenario,status,count,percentage
+baseline,OK,100,100.0
+baseline,INSUFFICIENT_DATA,0,0.0
+baseline,STALE_DATA,0,0.0
+baseline,INVALID_INPUT,0,0.0
+baseline,ESTIMATOR_FAILURE,0,0.0

@@ -1,0 +1,294 @@
+{
+  "schema_version": 1,
+  "data_source": "SIMULATED / PREDEFINED DATA",
+  "scenario_name": "LOST_TRACK",
+  "duration_seconds": 30,
+  "area_width_m": 100,
+  "area_height_m": 100,
+  "grid_resolution_m": 2,
+  "frames": [
+    {
+      "time": 0,
+      "position": [
+        20,
+        20
+      ],
+      "uncertainty_radius": 24,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 1,
+      "position": [
+        22,
+        21
+      ],
+      "uncertainty_radius": 24,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 2,
+      "position": [
+        24,
+        23
+      ],
+      "uncertainty_radius": 23,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 3,
+      "position": [
+        26,
+        25
+      ],
+      "uncertainty_radius": 23,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 4,
+      "position": [
+        28,
+        28
+      ],
+      "uncertainty_radius": 22,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 5,
+      "position": [
+        30,
+        31
+      ],
+      "uncertainty_radius": 21,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 6,
+      "position": [
+        32,
+        34
+      ],
+      "uncertainty_radius": 20,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 7,
+      "position": [
+        34,
+        37
+      ],
+      "uncertainty_radius": 19,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 8,
+      "position": null,
+      "uncertainty_radius": null,
+      "confidence_label": "UNKNOWN",
+      "track_status": "DEGRADED"
+    },
+    {
+      "time": 9,
+      "position": null,
+      "uncertainty_radius": null,
+      "confidence_label": "UNKNOWN",
+      "track_status": "DEGRADED"
+    },
+    {
+      "time": 10,
+      "position": null,
+      "uncertainty_radius": null,
+      "confidence_label": "UNKNOWN",
+      "track_status": "LOST"
+    },
+    {
+      "time": 11,
+      "position": null,
+      "uncertainty_radius": null,
+      "confidence_label": "UNKNOWN",
+      "track_status": "LOST"
+    },
+    {
+      "time": 12,
+      "position": null,
+      "uncertainty_radius": null,
+      "confidence_label": "UNKNOWN",
+      "track_status": "LOST"
+    },
+    {
+      "time": 13,
+      "position": null,
+      "uncertainty_radius": null,
+      "confidence_label": "UNKNOWN",
+      "track_status": "LOST"
+    },
+    {
+      "time": 14,
+      "position": null,
+      "uncertainty_radius": null,
+      "confidence_label": "UNKNOWN",
+      "track_status": "LOST"
+    },
+    {
+      "time": 15,
+      "position": null,
+      "uncertainty_radius": null,
+      "confidence_label": "UNKNOWN",
+      "track_status": "LOST"
+    },
+    {
+      "time": 16,
+      "position": null,
+      "uncertainty_radius": null,
+      "confidence_label": "UNKNOWN",
+      "track_status": "LOST"
+    },
+    {
+      "time": 17,
+      "position": [
+        54,
+        62
+      ],
+      "uncertainty_radius": 22,
+      "confidence_label": "LOW",
+      "track_status": "REACQUIRING"
+    },
+    {
+      "time": 18,
+      "position": [
+        56,
+        64
+      ],
+      "uncertainty_radius": 22,
+      "confidence_label": "LOW",
+      "track_status": "REACQUIRING"
+    },
+    {
+      "time": 19,
+      "position": [
+        58,
+        66
+      ],
+      "uncertainty_radius": 9,
+      "confidence_label": "MEDIUM",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 20,
+      "position": [
+        60,
+        68
+      ],
+      "uncertainty_radius": 8,
+      "confidence_label": "HIGH",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 21,
+      "position": [
+        62,
+        69
+      ],
+      "uncertainty_radius": 8,
+      "confidence_label": "HIGH",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 22,
+      "position": [
+        64,
+        70
+      ],
+      "uncertainty_radius": 7,
+      "confidence_label": "HIGH",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 23,
+      "position": [
+        66,
+        71
+      ],
+      "uncertainty_radius": 7,
+      "confidence_label": "HIGH",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 24,
+      "position": [
+        68,
+        72
+      ],
+      "uncertainty_radius": 6,
+      "confidence_label": "HIGH",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 25,
+      "position": [
+        70,
+        73
+      ],
+      "uncertainty_radius": 6,
+      "confidence_label": "HIGH",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 26,
+      "position": [
+        72,
+        74
+      ],
+      "uncertainty_radius": 6,
+      "confidence_label": "HIGH",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 27,
+      "position": [
+        74,
+        75
+      ],
+      "uncertainty_radius": 6,
+      "confidence_label": "HIGH",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 28,
+      "position": [
+        76,
+        76
+      ],
+      "uncertainty_radius": 5,
+      "confidence_label": "HIGH",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 29,
+      "position": [
+        78,
+        77
+      ],
+      "uncertainty_radius": 5,
+      "confidence_label": "HIGH",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 30,
+      "position": [
+        80,
+        78
+      ],
+      "uncertainty_radius": 5,
+      "confidence_label": "HIGH",
+      "track_status": "TRACKING"
+    }
+  ]
+}

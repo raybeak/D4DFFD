@@ -1,0 +1,47 @@
+{
+  "seed": 42,
+  "samples": 61,
+  "period": 0.5,
+  "delay_limit": 0.75,
+  "offline_after": 2.0,
+  "recovery_messages": 3,
+  "faults": {
+    "sensor-1": {
+      "drop": [
+        5,
+        6,
+        60
+      ]
+    },
+    "sensor-2": {
+      "duplicate": [
+        3,
+        12
+      ],
+      "delay": {
+        "8": 2.0
+      }
+    },
+    "sensor-3": {
+      "invalid": [
+        10,
+        11
+      ]
+    },
+    "sensor-4": {
+      "drop": [
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25
+      ]
+    }
+  }
+}

@@ -1,0 +1,34 @@
+[
+  {
+    "timestamp": 100.0,
+    "receiver_id": "r1",
+    "emitter_id": "test_emitter",
+    "value": 0.9359698196572606,
+    "unit": "synthetic_unit",
+    "quality": "VALID"
+  },
+  {
+    "timestamp": 100.0,
+    "receiver_id": "r2",
+    "emitter_id": "test_emitter",
+    "value": 0.8927642720245029,
+    "unit": "synthetic_unit",
+    "quality": "VALID"
+  },
+  {
+    "timestamp": 100.0,
+    "receiver_id": "r3",
+    "emitter_id": "test_emitter",
+    "value": 1.0909688713846242,
+    "unit": "synthetic_unit",
+    "quality": "VALID"
+  },
+  {
+    "timestamp": 100.0,
+    "receiver_id": "r4",
+    "emitter_id": "test_emitter",
+    "value": 1.0400507855130254,
+    "unit": "synthetic_unit",
+    "quality": "VALID"
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "status": "INVALID_INPUT",
+  "representative_position": null,
+  "ground_truth": [
+    75.0,
+    70.0
+  ],
+  "position_error_m": null,
+  "ground_truth_inside_50_region": null,
+  "ground_truth_inside_90_region": null,
+  "region_50_area_m2": null,
+  "region_90_area_m2": null,
+  "region_50_actual_mass": null,
+  "region_90_actual_mass": null,
+  "processing_time_ms": 0.021980999918014277,
+  "active_observation_count": 0,
+  "overconfident_failure": null,
+  "message": "Nonfinite observation or wrong unit",
+  "diagnostics": {},
+  "scenario": "nan",
+  "random_seed": 43,
+  "data_source": "SYNTHETIC",
+  "estimator": "PLACEHOLDER / NOT VALIDATED",
+  "timing_scope": "estimator call only; excludes plotting and I/O"
+}

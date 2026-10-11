@@ -1,0 +1,10 @@
+[
+  {
+    "timestamp": 100.0,
+    "receiver_id": "r1",
+    "emitter_id": "test_emitter",
+    "value": 1.0102305139640282,
+    "unit": "synthetic_unit",
+    "quality": "VALID"
+  }
+]

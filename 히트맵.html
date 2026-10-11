@@ -1,0 +1,1450 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Squad Radar · 제4분대</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<!--
+  ============================================================================
+  SQUAD RADAR — 발표용 전술 대시보드 (단일 파일, 설치 불필요)
+  ----------------------------------------------------------------------------
+  실행: 이 파일을 크롬으로 열면 끝. (전체화면: F)
+
+  데이터 연결 (셋 중 하나)
+    1) WebSocket : index.html?ws=ws://192.168.0.10:8765
+    2) HTTP 폴링 : index.html?poll=http://192.168.0.10:5000/state&ms=150
+    3) USB 시리얼: 화면에서 C → "USB 시리얼 연결" (아두이노가 한 줄씩 출력)
+
+  좌표계 (종이 전장 그대로)
+    x : 0(서) → 4(동)      y : 0(북, 적 방향) → 5(남)      단위 = 종이 1칸
+    병사(노드) 위치: N1 김하사(0,0)  N2 이병장(4,0)  N3 박상병(0,5)  N4 최일병(4,5)
+
+  받을 수 있는 메시지 (JSON 한 줄. 셋 중 아무거나, 섞어도 됨)
+    A. 히트맵 그대로   {"grid": [[...],[...]], "detected": true}
+                       grid = 2차원 배열, 0번째 행 = 북쪽. 크기 자유(자동 리샘플), 값 합은 자동 정규화
+    B. 위치 추정값     {"x": 3.2, "y": 0.8, "sigma": 0.5}
+    C. 노드 RSSI만     {"rssi": [-61, -48, -72, -80]}   또는 그냥 "-61,-48,-72,-80"
+                       → 이 화면이 직접 경로손실 모델로 확률 지도를 계산 (백업용)
+    D. 허브 프레임     hub.py 출력 그대로 {"t", "nodes":{...}, "grid":{x0,y0,step,n,v}, "kalman":{...}}  (prd.md §4.2)
+                       → 노드 좌표(m)를 종이 전장에 맞춰 변환, 노드는 가까운 분대원 모서리에 자동 배정,
+                         kalman 추적 중이면 pos+vel 로 예측 경로(PRED · EKF) 표시
+    (선택) 경로 예측  {"path": [[3.2,0.8],[2.9,1.4],[2.5,2.0]]}  ← CLIKA 예측 결과가 있을 때만
+    (선택) RSSI 동봉   A·B 메시지에 "rssi" 를 같이 넣으면 하단 노드 텔레메트리에 표시
+
+  단축키
+    1 탐지기 모드 · 2 분대 레이더 모드 · Space 시뮬레이션 시작 · S 시뮬레이션 켜기/끄기
+    맵 클릭·드래그 = 드론 수동 배치(시뮬) · A 상황 발생 경보 · R 리셋 · M 음소거
+    C 연결 설정 · D 디버그(실제 위치 표시) · F 전체화면 · H 도움말
+  ============================================================================
+-->
+<style>
+:root{
+  --bg:#070908; --panel:rgba(14,19,16,.94); --line:#1c2620; --line2:#2a382f; --br:#6b7d70;
+  --tx:#e3e9e0; --dim:#8b988f; --mute:#5a675e;
+  --fr:#7cc6ff; --hos:#ff4a3a; --amb:#ffb21e; --ok:#8ddc97;
+  --crit:#ff3b30; --high:#ff8a1e; --med:#ffcf4a; --low:#8ddc97; --unk:#ffb21e;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --cond:'Barlow Condensed','Noto Sans KR',system-ui,sans-serif;
+  --kr:'Noto Sans KR',system-ui,-apple-system,'Malgun Gothic',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx)}
+body{font-family:var(--kr);-webkit-font-smoothing:antialiased;
+  background:radial-gradient(1400px 800px at 50% 45%,#0f1612 0%,#070908 72%)}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:60;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px)}
+button{font:inherit;color:inherit}
+.app{position:relative;z-index:1;display:grid;grid-template-rows:22px 60px minmax(0,1fr);height:100vh;pointer-events:none}
+.banner,.top,.panel{pointer-events:auto}
+#map{position:fixed;inset:0;z-index:0;display:block;cursor:crosshair;touch-action:none}
+
+/* ---------- classification banner ---------- */
+.banner{background:#1d6a39;color:#eafff0;font:600 10.5px/22px var(--mono);letter-spacing:.3em;text-align:center;white-space:nowrap;overflow:hidden}
+
+/* ---------- header ---------- */
+.top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;padding:0 16px;
+  border-bottom:1px solid var(--line);background:rgba(8,11,9,.80);backdrop-filter:blur(8px)}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand svg{flex:none}
+.brand .b1{font:700 21px/1 var(--cond);letter-spacing:.16em}
+.brand .b1 em{font-style:normal;color:var(--amb)}
+.brand .b2{font:500 11px/1.3 var(--kr);color:var(--dim);margin-top:4px;white-space:nowrap}
+.modes{display:flex;border:1px solid var(--line2);background:#0a0e0c}
+.modes button{appearance:none;background:transparent;border:0;color:var(--mute);padding:7px 18px 7px 12px;
+  display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left;transition:background .2s,color .2s}
+.modes button+button{border-left:1px solid var(--line2)}
+.modes .k{font:600 11px var(--mono);border:1px solid currentColor;width:20px;height:20px;display:grid;place-items:center;flex:none}
+.modes b{display:block;font:700 14px/1.15 var(--kr)}
+.modes small{display:block;font:500 9.5px/1.2 var(--mono);letter-spacing:.16em}
+.modes button.on{background:#141c17;color:var(--tx)}
+.modes button[data-mode="1"].on{box-shadow:inset 0 -2px 0 var(--crit)}
+.modes button[data-mode="1"].on .k{color:var(--crit)}
+.modes button[data-mode="2"].on{box-shadow:inset 0 -2px 0 var(--amb)}
+.modes button[data-mode="2"].on .k{color:var(--amb)}
+.meta{display:flex;justify-content:flex-end;align-items:center;gap:18px;min-width:0}
+.unit{font:700 13px/1.2 var(--kr);text-align:right;white-space:nowrap}
+.unit span{display:block;font:500 9.5px var(--mono);color:var(--mute);letter-spacing:.18em;margin-top:2px}
+.clock{font:500 24px/1 var(--mono);letter-spacing:.02em;white-space:nowrap}
+.clock small{font-size:10px;color:var(--mute);margin-left:5px;letter-spacing:.14em}
+.chip{display:flex;align-items:center;gap:8px;font:600 10.5px var(--mono);letter-spacing:.14em;padding:7px 10px;
+  border:1px solid var(--line2);background:#0a0e0c;cursor:pointer;white-space:nowrap}
+.chip i{width:8px;height:8px;border-radius:50%;background:var(--mute);flex:none}
+.chip.live i{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+.chip.sim i{background:var(--amb);box-shadow:0 0 10px var(--amb)}
+.chip.stale i{background:var(--crit)}
+.chip.on{color:var(--tx)} .chip.off{color:var(--mute)}
+
+/* ---------- layout ---------- */
+.main{display:grid;grid-template-columns:clamp(270px,23vw,420px) minmax(0,1fr) clamp(300px,24vw,440px);gap:14px;padding:12px 16px;min-height:0}
+.col{display:flex;flex-direction:column;gap:12px;min-height:0;min-width:0}
+.mapcol{display:flex;justify-content:center;align-items:center;min-height:0;min-width:0}
+
+/* ---------- panel chrome ---------- */
+.panel{position:relative;background:rgba(10,14,12,.80);border:1px solid var(--line);backdrop-filter:blur(10px)}
+.panel::before{content:"";position:absolute;inset:-1px;pointer-events:none;z-index:2;
+  background:
+    linear-gradient(var(--br),var(--br)) top left/12px 1px no-repeat,
+    linear-gradient(var(--br),var(--br)) top left/1px 12px no-repeat,
+    linear-gradient(var(--br),var(--br)) top right/12px 1px no-repeat,
+    linear-gradient(var(--br),var(--br)) top right/1px 12px no-repeat,
+    linear-gradient(var(--br),var(--br)) bottom left/12px 1px no-repeat,
+    linear-gradient(var(--br),var(--br)) bottom left/1px 12px no-repeat,
+    linear-gradient(var(--br),var(--br)) bottom right/12px 1px no-repeat,
+    linear-gradient(var(--br),var(--br)) bottom right/1px 12px no-repeat}
+.ph{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);
+  font:600 10px var(--mono);letter-spacing:.16em;color:var(--dim);white-space:nowrap}
+.ph b{color:var(--tx);font-weight:600}
+.ph .tag{color:var(--mute)}
+label{display:block;font:500 9px/1.3 var(--mono);color:var(--mute);letter-spacing:.12em;white-space:nowrap}
+
+/* ---------- squad cards ---------- */
+.squad{flex:1;display:flex;flex-direction:column;min-height:0}
+.cards{flex:1;display:grid;grid-template-rows:repeat(4,minmax(0,1fr));gap:8px;padding:10px;min-height:0}
+.card{--lc:var(--mute);position:relative;border:1px solid var(--line);background:rgba(8,12,10,.65);padding:9px 11px 9px 13px;
+  display:flex;flex-direction:column;justify-content:space-between;gap:5px;min-height:0;overflow:hidden;transition:border-color .3s,background .3s}
+.card::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--lc);transition:background .3s}
+.card.tgt{border-color:rgba(255,59,48,.65);background:linear-gradient(90deg,rgba(80,14,10,.55),rgba(30,8,6,.35))}
+.card.tgt::after{animation:blink .6s steps(2) infinite}
+.c-top{display:flex;align-items:center;gap:10px}
+.c-name{flex:1;min-width:0}
+.c-name b{font:700 17px/1.1 var(--kr);letter-spacing:-.01em}
+.c-name .tt{display:none;margin-left:6px;vertical-align:2px;font:700 9px var(--mono);letter-spacing:.12em;background:var(--crit);color:#fff;padding:2px 5px}
+.card.tgt .c-name .tt{display:inline-block}
+.c-name span{display:block;font:500 9.5px/1.4 var(--mono);color:var(--mute);letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lvl{font:700 10px var(--mono);letter-spacing:.1em;padding:3px 7px;border:1px solid var(--lc);color:var(--lc);white-space:nowrap}
+.c-grid{display:grid;grid-template-columns:1fr .8fr 1.1fr;gap:6px}
+.v{font:600 27px/1.05 var(--cond);font-variant-numeric:tabular-nums;letter-spacing:.01em;white-space:nowrap}
+.v small{font:500 11px var(--mono);color:var(--mute);margin-left:2px}
+.pbar{height:3px;background:#18211c}
+.pbar i{display:block;height:100%;width:0;background:var(--lc);transition:width .25s,background .3s}
+.c-act{font:500 11.5px/1.3 var(--kr);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-act b{color:var(--tx)}
+
+/* ---------- threat ---------- */
+.th-id{display:flex;gap:12px;align-items:center;padding:12px}
+.th-id svg{flex:none}
+.th-id b{display:block;font:700 23px/1.05 var(--cond);letter-spacing:.08em}
+.th-id span{display:block;font:500 11px/1.4 var(--kr);color:var(--dim);margin-top:2px}
+.threat.hot .th-id b{color:var(--hos)}
+.threat.unk .th-id b{color:var(--unk)}
+.th-grid{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+.th-grid>div{padding:8px 12px;border-bottom:1px solid var(--line);min-width:0}
+.th-grid>div:nth-child(odd){border-right:1px solid var(--line)}
+.th-grid .v{font-size:30px}
+.th-grid>div>small{display:block;font:500 10px/1.3 var(--kr);color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.predrow{padding:8px 12px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,rgba(255,215,90,.07),transparent)}
+.predrow .pt{font:500 13px/1.45 var(--kr);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.predrow .pt b{color:#ffd75a} .predrow .pt .hit{color:#ff7b70;font-weight:700}
+.advice{padding:9px 12px 11px;background:linear-gradient(90deg,rgba(141,220,151,.08),transparent)}
+.advice.unk{background:linear-gradient(90deg,rgba(255,178,30,.10),transparent)}
+.advice .at{font:500 13px/1.5 var(--kr);margin-top:3px}
+.advice .at div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.advice .at b{font-weight:700}
+.advice .at .fire{color:var(--crit)}
+.advice .at .go{color:var(--ok)}
+
+/* ---------- compass ---------- */
+.cp{display:flex;align-items:center;gap:10px;padding:8px 12px 8px 8px}
+.cp svg{flex:none;width:164px;height:164px}
+.cp .ro{flex:1;min-width:0}
+.cp .bb{font:600 46px/1 var(--cond);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.cp .bb small{font-size:20px;color:var(--mute)}
+.cp .cd{font:700 15px/1.3 var(--kr);margin-top:2px}
+.cp .ce{font:500 10px/1.5 var(--mono);color:var(--mute);margin-top:6px;letter-spacing:.06em}
+#cmpRing.spin{animation:spin 3s linear infinite;transform-origin:0 0}
+
+/* ---------- log ---------- */
+.logP{flex:1;display:flex;flex-direction:column;min-height:0}
+#log{list-style:none;overflow:auto;flex:1;min-height:0;scrollbar-width:thin;scrollbar-color:#2a382f transparent}
+#log li{display:flex;gap:10px;padding:5px 12px;border-bottom:1px dashed #18211c;font:500 11px/1.45 var(--mono);color:var(--dim)}
+#log li time{color:var(--mute);flex:none}
+#log li span{font-family:var(--kr);font-size:11.5px}
+#log li.crit span{color:#ff7b70}
+#log li.warn span{color:var(--amb)}
+#log li.ok span{color:var(--ok)}
+#log li:first-child{background:rgba(255,255,255,.025)}
+
+/* ---------- footer telemetry ---------- */
+.foot{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) minmax(0,1.85fr);gap:12px;padding:0 16px 12px;min-height:0}
+.node{padding:8px 10px;display:flex;flex-direction:column;justify-content:space-between;min-width:0}
+.node .nh{display:flex;justify-content:space-between;align-items:center;font:600 10px var(--mono);letter-spacing:.12em;color:var(--dim)}
+.node .nh i{width:7px;height:7px;border-radius:50%;background:var(--mute);display:inline-block;margin-right:6px}
+.node.on .nh i{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.node .nn{font:700 12px var(--kr);color:var(--tx);letter-spacing:0}
+.node .rv{font:600 26px/1 var(--cond);font-variant-numeric:tabular-nums}
+.node .rv small{font:500 11px var(--mono);color:var(--mute);margin-left:3px}
+.node canvas{width:100%;height:30px;display:block}
+.pipe{display:flex;flex-direction:column;min-width:0}
+.chain{display:flex;align-items:stretch;gap:6px;padding:9px 12px 6px;flex:1;min-height:0}
+.stage{flex:1;border:1px solid var(--line2);padding:6px 8px;min-width:0;position:relative;background:rgba(8,12,10,.6)}
+.stage b{display:block;font:700 12px/1.2 var(--kr);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stage span{display:block;font:500 9.5px/1.4 var(--mono);color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.stage i{position:absolute;top:7px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--mute)}
+.stage.on i{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.stage.loc i{background:var(--amb);box-shadow:0 0 8px var(--amb)}
+.chain .ar{align-self:center;color:var(--mute);font:600 12px var(--mono)}
+.pmeta{display:flex;gap:16px;padding:0 12px 8px;font:500 10px var(--mono);color:var(--dim);letter-spacing:.06em;white-space:nowrap;overflow:hidden}
+.pmeta b{color:var(--tx);font-weight:600}
+
+/* ---------- alert overlay ---------- */
+#alert{position:fixed;inset:0;z-index:40;display:grid;place-items:center;pointer-events:none;opacity:0;transition:opacity .18s}
+#alert.show{opacity:1}
+#alert .bg{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(150,14,8,.55),rgba(25,0,0,.9));animation:flash .45s steps(2) infinite}
+#alert .box{position:relative;text-align:center;padding:30px 90px 34px;background:rgba(12,0,0,.72)}
+#alert .box::before,#alert .box::after{content:"";position:absolute;left:0;right:0;height:12px;
+  background:repeating-linear-gradient(-45deg,var(--crit) 0 14px,#1a0000 14px 28px)}
+#alert .box::before{top:0} #alert .box::after{bottom:0}
+#alert .l1{font:600 13px var(--mono);letter-spacing:.45em;color:#ff8f86;margin-top:8px}
+#alert .l2{font:900 104px/1.1 var(--kr);letter-spacing:.04em;color:#fff;text-shadow:0 0 40px rgba(255,59,48,.7)}
+#alert .l3{font:600 18px var(--mono);letter-spacing:.22em;color:#ffd2ce}
+#alert .l4{font:500 14px var(--mono);letter-spacing:.14em;color:#ff8f86;margin-top:10px}
+
+/* ---------- modal ---------- */
+#modal{position:fixed;inset:0;z-index:45;display:none;place-items:center;background:rgba(3,5,4,.72);backdrop-filter:blur(3px)}
+#modal.show{display:grid}
+#modal .panel{width:min(720px,92vw);max-height:88vh;overflow:auto}
+#modal .mb{padding:16px 18px;display:flex;flex-direction:column;gap:12px;font:500 13px/1.6 var(--kr);color:var(--dim)}
+#modal h3{font:700 15px var(--kr);color:var(--tx)}
+#modal input{width:100%;background:#070a08;border:1px solid var(--line2);color:var(--tx);font:500 13px var(--mono);padding:10px 12px;outline:none}
+#modal input:focus{border-color:var(--amb)}
+#modal .row{display:flex;gap:8px;flex-wrap:wrap}
+#modal .btn{appearance:none;border:1px solid var(--line2);background:#121915;padding:9px 14px;font:600 12px var(--kr);cursor:pointer;color:var(--tx)}
+#modal .btn.pri{border-color:var(--amb);color:var(--amb)}
+#modal .btn:hover{background:#18221c}
+#modal code,#modal pre{font:500 11.5px/1.6 var(--mono);color:#cfe3d2}
+#modal pre{background:#070a08;border:1px solid var(--line);padding:10px 12px;white-space:pre-wrap}
+#modal kbd{font:600 11px var(--mono);border:1px solid var(--line2);padding:1px 6px;color:var(--tx);background:#0d130f}
+#modal .keys{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;align-items:center}
+
+#hint{position:fixed;left:50%;bottom:6px;transform:translateX(-50%);z-index:30;font:500 11px var(--mono);letter-spacing:.1em;
+  color:var(--dim);background:rgba(8,12,10,.9);border:1px solid var(--line2);padding:6px 12px;transition:opacity .4s;pointer-events:none;white-space:nowrap}
+
+@keyframes blink{50%{opacity:.25}}
+@keyframes flash{50%{opacity:.55}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (max-height:820px){
+  .app{grid-template-rows:22px 54px minmax(0,1fr)}
+  .th-grid .v{font-size:25px} .cp svg{width:140px;height:140px} .cp .bb{font-size:38px}
+  .v{font-size:19px} .c-name b{font-size:15px}
+}
+</style>
+</head>
+<body>
+<canvas id="map"></canvas>
+<div class="app">
+  <div class="banner">UNCLASSIFIED // 훈련용 시뮬레이션 · FOR DEMONSTRATION ONLY // UNCLASSIFIED</div>
+
+  <header class="top">
+    <div class="brand">
+      <svg width="38" height="38" viewBox="0 0 38 38" aria-hidden="true">
+        <circle cx="19" cy="19" r="17" fill="none" stroke="#2f4036"/>
+        <circle cx="19" cy="19" r="11" fill="none" stroke="#2f4036"/>
+        <path d="M19 19 L19 2 A17 17 0 0 1 33.7 10.5 Z" fill="rgba(255,178,30,.22)"/>
+        <line x1="19" y1="19" x2="33.7" y2="10.5" stroke="#ffb21e" stroke-width="1.5"/>
+        <rect x="3.5" y="3.5" width="5" height="5" fill="#7cc6ff"/><rect x="29.5" y="3.5" width="5" height="5" fill="#7cc6ff"/>
+        <rect x="3.5" y="29.5" width="5" height="5" fill="#7cc6ff"/><rect x="29.5" y="29.5" width="5" height="5" fill="#7cc6ff"/>
+        <circle cx="25" cy="12" r="2.2" fill="#ff4a3a"/>
+      </svg>
+      <div>
+        <div class="b1">SQUAD<em>·</em>RADAR</div>
+        <div class="b2">분대가 레이더다 · 분산 RSSI 확률 위치추정</div>
+      </div>
+    </div>
+
+    <div class="modes" role="tablist">
+      <button data-mode="2" class="on"><span class="k">●</span><span><b>분대 레이더</b><small>4-NODE FUSION</small></span></button>
+    </div>
+
+    <div class="meta">
+      <div class="unit">제4분대 · DMZ 산악 전초<span>4TH SQD · SECTOR C</span></div>
+      <div class="clock" id="clock">--:--:--<small>KST</small></div>
+      <div class="chip off" id="audioChip" title="M: 음소거">AUDIO OFF</div>
+      <div class="chip" id="link" title="C: 연결 설정"><i></i><span>NO DATA</span></div>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="col">
+      <div class="panel squad">
+        <div class="ph"><span><b>SQUAD</b> · 분대 현황</span><span class="tag" id="sqMeta">4 / 4 NODES</span></div>
+        <div class="cards" id="cards"></div>
+      </div>
+    </section>
+
+    <section class="mapcol" id="mapcol">
+    </section>
+
+    <section class="col">
+      <div class="panel threat" id="threat">
+        <div class="ph"><span><b>THREAT</b> · 위협 표적</span><span class="tag" id="thState">STANDBY</span></div>
+        <div class="th-id">
+          <svg width="46" height="46" viewBox="-23 -23 46 46" aria-hidden="true">
+            <path d="M0 -19 L19 0 L0 19 L-19 0 Z" fill="rgba(255,74,58,.16)" stroke="#ff4a3a" stroke-width="1.8" id="thIcon"/>
+            <path d="M-9 -2 L0 4 L9 -2" fill="none" stroke="#ff4a3a" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+          <div><b id="thName">NO CONTACT</b><span id="thSub">RF 감시 중 · 4개 노드 대기</span></div>
+        </div>
+        <div class="th-grid">
+          <div><label>방위 · BEARING</label><div class="v" id="thBrg">---</div><small id="thCard">분대 중심 기준</small></div>
+          <div><label>거리 · RANGE</label><div class="v" id="thRng">---</div><small>분대 중심 기준</small></div>
+          <div><label>위치 오차 · CEP50</label><div class="v" id="thCep">---</div><small>50% 확률 반경</small></div>
+          <div><label>추세 · TREND</label><div class="v" id="thTrend">---</div><small id="thRate">표적 병사 기준</small></div>
+        </div>
+        <div class="predrow" id="predRow"><label>예상 경로 · PREDICTED PATH</label><div class="pt" id="predText">—</div></div>
+        <div class="advice" id="advice"><label>권고 조치 · ACTION</label><div class="at" id="advText"><div>—</div></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="ph"><span><b>COMPASS</b> · 방위</span><span class="tag" id="cmpTag">MAG N · 북쪽 = 적 방향</span></div>
+        <div class="cp">
+          <svg viewBox="-110 -110 220 220" aria-hidden="true">
+            <g id="cmpRing"></g>
+            <g id="cmpNeedle" style="display:none">
+              <path id="cmpWedge" fill="rgba(255,74,58,.16)" stroke="rgba(255,74,58,.45)" stroke-width="1"/>
+              <line x1="0" y1="0" x2="0" y2="-84" stroke="#ff4a3a" stroke-width="2.4"/>
+              <path d="M0 -98 L7 -82 L-7 -82 Z" fill="#ff4a3a"/>
+              <line x1="0" y1="0" x2="0" y2="26" stroke="#5a675e" stroke-width="2"/>
+            </g>
+            <circle r="4" fill="#e3e9e0"/>
+            <text id="cmpQ" x="0" y="14" text-anchor="middle" font-family="Barlow Condensed" font-weight="700" font-size="44" fill="#ffb21e" style="display:none">?</text>
+          </svg>
+          <div class="ro">
+            <label>표적 방위 · BRG</label>
+            <div class="bb" id="cmpDeg">---<small>°</small></div>
+            <div class="cd" id="cmpCard">대기</div>
+            <div class="ce" id="cmpErr">방위 오차 ± —</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel logP">
+        <div class="ph"><span><b>EVENT LOG</b> · 상황 일지</span><span class="tag" id="logN">0</span></div>
+        <ol id="log"></ol>
+      </div>
+    </section>
+  </main>
+
+</div>
+
+<div id="alert"><div class="bg"></div><div class="box">
+  <div class="l1">FLASH · FLASH · FLASH</div>
+  <div class="l2">상황 발생</div>
+  <div class="l3">HOSTILE UAV · RF CONTACT</div>
+  <div class="l4" id="alertSub">제4분대 · 적 FPV 접근</div>
+</div></div>
+
+<div id="modal"><div class="panel">
+  <div class="ph"><span><b>CONFIG</b> · 연결 설정 / 도움말</span><span class="tag">ESC 닫기</span></div>
+  <div class="mb">
+    <h3>데이터 연결</h3>
+    <input id="urlIn" placeholder="ws://192.168.0.10:8765   또는   http://192.168.0.10:5000/state">
+    <div class="row">
+      <button class="btn pri" id="btnConn">연결</button>
+      <button class="btn" id="btnSerial">USB 시리얼 연결</button>
+      <button class="btn" id="btnSim">시뮬레이션 시작</button>
+      <button class="btn" id="btnDisc">연결 해제</button>
+      <button class="btn" id="btnClose">닫기</button>
+    </div>
+    <h3>받는 데이터 (JSON 한 줄, 아무거나)</h3>
+<pre>{"grid": [[0,0.1,...],[...]], "detected": true}   ← 히트맵 그대로 (0번째 행 = 북쪽)
+{"x": 3.2, "y": 0.8, "sigma": 0.5}                ← 위치 추정값 (종이 칸 단위)
+{"rssi": [-61, -48, -72, -80]}                    ← 노드 RSSI만 (화면이 직접 계산)
+-61,-48,-72,-80                                   ← CSV 도 OK
+{"path": [[3.2,0.8],[2.9,1.4]]}                   ← (선택) CLIKA 경로 예측</pre>
+    <div>좌표: x 0(서)→4(동), y 0(북·적 방향)→5(남). 노드 순서 N1 김하사(0,0) · N2 이병장(4,0) · N3 박상병(0,5) · N4 최일병(4,5)</div>
+    <h3>단축키</h3>
+    <div class="keys">
+      <kbd>1</kbd><span>탐지기 모드 — 삑삑만, 방향 불명 (1라운드)</span>
+      <kbd>2</kbd><span>분대 레이더 모드 — 히트맵·표적·권고 (2라운드)</span>
+      <kbd>Space</kbd><span>시뮬레이션 경로 처음부터 재생</span>
+      <kbd>S</kbd><span>시뮬레이션 켜기/끄기 · 맵을 클릭·드래그하면 드론 수동 배치</span>
+      <kbd>A</kbd><span>상황 발생 경보 수동 표시</span>
+      <kbd>R</kbd><span>리셋 (항적·확률 초기화)</span>
+      <kbd>M</kbd><span>경보음 켜기/끄기</span>
+      <kbd>D</kbd><span>디버그 — 시뮬레이션의 실제 드론 위치 표시</span>
+      <kbd>F</kbd><span>전체화면</span>
+      <kbd>C · H</kbd><span>이 창</span>
+    </div>
+  </div>
+</div></div>
+
+<div id="hint">CLICK 화면 클릭 → 경보음 활성화 · SPACE 시뮬레이션 · C 연결 · H 도움말</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ======================= CONFIG — 현장에서 여기만 조정 ======================= */
+const CFG = {
+  FIELD_W: 4, FIELD_H: 5,          // 종이 전장 4 × 5 칸
+  UNIT_M: 50,                      // 표시용 축척: 종이 1칸 = 실제 50 m (가정)
+  ENGAGE_M: 75,                    // 산탄총 유효 사거리 (교전권)
+  NX: 48, NY: 60,                  // 내부 확률 격자 해상도
+  EMA: 0.35,
+  EMA_HUB: 0.75,                   // 허브 프레임은 1 Hz 라 평활을 약하게 (지연 방지)
+  HEAT_GAMMA: 2.1,                 // 히트맵 표시 대비 (클수록 진한 부분만 남음 → 좁아 보임)
+  HEAT_CUT: 0.07,                  // 최고값 대비 이 비율 미만은 투명                       // 히트맵 시간 평활 (0~1, 클수록 빠르게 반응)
+  DEFAULT_SIGMA: 0.45,             // {x,y} 메시지에 sigma 없을 때 (칸)
+  DATA_TIMEOUT_MS: 2500,           // 이 시간 동안 데이터 없으면 신호 소실
+  DETECT_DBM: -90,                 // RSSI 가 이보다 크면 '탐지'
+  RSSI: { P0: -40, N: 2.2, SIGMA: 3.5, PHYS_UNIT_M: 0.25 }, // 경로손실 모델: 1 m 기준 P0, 지수 N, 잡음 σ(dB), 종이 1칸의 실제 길이(m)
+  SIM_SPEED: 0.28,
+  MOVE_SPEED: 0.55,                // 병사 이동 속도 (칸/초, 화면 연출용)
+  PRED_DT: 0.5, PRED_STEPS: 6,     // 데모 예측: 0.5초 간격 6스텝 (CLIKA 데이터가 오면 그걸 우선 사용)                 // 시뮬레이션 드론 속도 (칸/초)
+  SIM_NOISE_DB: 3,
+  AUTO_ALERT: true,                // 첫 탐지 시 '상황 발생' 자동 표시
+  BAUD: 115200,
+};
+const SQUAD = [
+  { id:'N1', full:'김하사', role:'분대장',   call:'4-1', pos:'NW', x:0, y:0 },
+  { id:'N2', full:'이병장', role:'부분대장', call:'4-2', pos:'NE', x:4, y:0 },
+  { id:'N3', full:'박상병', role:'소총수',   call:'4-3', pos:'SW', x:0, y:5 },
+  { id:'N4', full:'최일병', role:'소총수',   call:'4-4', pos:'SE', x:4, y:5 },
+];
+const COVERS = [
+  { id:'W', name:'서측 수풀', tag:'COVER-W', x0:0.22, x1:1.38, y0:2.28, y1:2.72 },
+  { id:'E', name:'동측 수풀', tag:'COVER-E', x0:2.62, x1:3.78, y0:2.28, y1:2.72 },
+];
+// 시뮬레이션 경로: 북쪽 중앙으로 진입 → 북동(이병장)으로 꺾음 → 접근 → 남하
+const SIM_PATH = [[2.0,0.08],[2.15,0.55],[2.6,0.85],[3.1,0.8],[3.45,0.55],[3.62,0.38],[3.55,0.75],[3.2,1.3],[2.7,1.8],[2.2,2.1]];
+
+/* ======================= STATE ======================= */
+const W = CFG.FIELD_W, H = CFG.FIELD_H, NX = CFG.NX, NY = CFG.NY, N = NX * NY;
+const CW = W / NX, CH = H / NY;
+const GX = new Float32Array(N), GY = new Float32Array(N);
+for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) { GX[j*NX+i] = (i+.5)*CW; GY[j*NX+i] = (j+.5)*CH; }
+
+const S = {
+  mode: 2, prob: new Float32Array(N), hasProb: false, heatDirty: true, heatA: 0, vmax: 1e-9,
+  detected: false, lastDetT: 0, lastMsg: 0, rate: 0, src: '', kind: '',
+  est: null, brg: 0, rangeU: 0, cepU: 0, c50: [], c90: [], track: [], lastTrackT: 0, pred: null,
+  risk: SQUAD.map(() => null), target: -1, prevTarget: -1, trendHist: [],
+  rssi: [null,null,null,null], rssiHist: SQUAD.map(() => []), rssiT: [0,0,0,0],
+  ac: null, muted: false, nextBeep: 0, debug: false,
+  sim: { mode: 'off', t: 0, pos: null }, conn: null, connKind: '', connUrl: '',
+  needle: 0, alertUntil: 0, episodeAlerted: false, critLogged: -1,
+  sp: SQUAD.map(s => ({ x: s.x, y: s.y })), st: SQUAD.map(() => 'HOLD'), coverSel: SQUAD.map(() => null), dest: SQUAD.map(s => ({ x: s.x, y: s.y })),
+  extPred: null, extPredT: 0, predPath: null, predSrc: '', extPredSrc: '', predHit: null, lastFrameT: 0,
+};
+const $ = s => document.querySelector(s);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const now = () => performance.now();
+const CARD8 = ['N · 북','NE · 북동','E · 동','SE · 남동','S · 남','SW · 남서','W · 서','NW · 북서'];
+const cardinal = b => CARD8[Math.round(b / 45) % 8];
+const bearing = (fx, fy, tx, ty) => (Math.atan2(tx - fx, -(ty - fy)) * 180 / Math.PI + 360) % 360;
+const hms = () => new Date().toLocaleTimeString('en-GB', { hour12: false, timeZone: 'Asia/Seoul' });
+const fmt3 = b => String(Math.round(b) % 360).padStart(3, '0');
+
+/* ======================= PROBABILITY INPUTS ======================= */
+function normalize(a) { let s = 0; for (let k = 0; k < a.length; k++) s += a[k]; if (s <= 0 || !isFinite(s)) return false; for (let k = 0; k < a.length; k++) a[k] /= s; return true; }
+
+function fromGrid(g, w, h) {
+  let src, sw, sh;
+  if (Array.isArray(g[0])) { sh = g.length; sw = g[0].length; src = new Float32Array(sw*sh); for (let j=0;j<sh;j++) for (let i=0;i<sw;i++) src[j*sw+i] = Math.max(0, +g[j][i] || 0); }
+  else { sw = +w; sh = +h; if (!sw || !sh) return null; src = Float32Array.from(g, v => Math.max(0, +v || 0)); }
+  const out = new Float32Array(N);
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+    const sx = clamp((i+.5)/NX*sw - .5, 0, sw-1), sy = clamp((j+.5)/NY*sh - .5, 0, sh-1);
+    const x0 = Math.floor(sx), y0 = Math.floor(sy), x1 = Math.min(sw-1, x0+1), y1 = Math.min(sh-1, y0+1);
+    const fx = sx - x0, fy = sy - y0;
+    out[j*NX+i] = (src[y0*sw+x0]*(1-fx) + src[y0*sw+x1]*fx)*(1-fy) + (src[y1*sw+x0]*(1-fx) + src[y1*sw+x1]*fx)*fy;
+  }
+  return normalize(out) ? out : null;
+}
+function fromGauss(x, y, sg) {
+  const out = new Float32Array(N), d = 2 * sg * sg;
+  for (let k = 0; k < N; k++) { const dx = GX[k]-x, dy = GY[k]-y; out[k] = Math.exp(-(dx*dx+dy*dy)/d); }
+  return normalize(out) ? out : null;
+}
+function fromRSSI(r) {
+  const R = CFG.RSSI, inv = 1 / (2 * R.SIGMA * R.SIGMA), ll = new Float32Array(N);
+  let used = 0;
+  for (let n = 0; n < SQUAD.length; n++) {
+    const v = r[n]; if (v == null || !isFinite(v)) continue; used++;
+    const s = SQUAD[n];
+    for (let k = 0; k < N; k++) {
+      const d = Math.max(Math.hypot(GX[k]-s.x, GY[k]-s.y) * R.PHYS_UNIT_M, 0.05);
+      const e = v - (R.P0 - 10 * R.N * Math.log10(d));
+      ll[k] -= e * e * inv;
+    }
+  }
+  if (used < 2) return null;
+  let m = -Infinity; for (let k = 0; k < N; k++) if (ll[k] > m) m = ll[k];
+  const out = new Float32Array(N); for (let k = 0; k < N; k++) out[k] = Math.exp(ll[k] - m);
+  return normalize(out) ? out : null;
+}
+
+/* ======================= HUB FRAME (hub.py, prd.md §4.2) ======================= */
+// {t, nodes:{name:{x,y,rssi,d,fresh}}, grid:{x0,y0,step,n,v[iy][ix]}, est, kalman:{state,pos,vel,cov,used}}
+// 단위 m, 원점 = 정사각형 중심, y 위쪽 +, v[0] = 가장 아래(남) 행.
+// 노드 bounding box 를 종이 전장(0..W, 0..H)에 맞추고, 각 노드를 가장 가까운 분대원 모서리에 배정한다.
+const HUB = { key: '', slot: {}, box: null };
+function hubLayout(nodes) {
+  const names = Object.keys(nodes).filter(k => nodes[k] && isFinite(nodes[k].x) && isFinite(nodes[k].y)).sort();
+  const key = names.map(k => `${k}:${nodes[k].x},${nodes[k].y}`).join('|');
+  if (key === HUB.key) return HUB.box;
+  HUB.key = key; HUB.slot = {}; HUB.box = null;
+  if (names.length < 2) return null;
+  const xs = names.map(k => +nodes[k].x), ys = names.map(k => +nodes[k].y);
+  const box = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  if (box.x1 - box.x0 < 1e-6 || box.y1 - box.y0 < 1e-6) { log('허브 노드 배치가 일직선 · 지도 변환 불가', 'crit'); return null; }
+  HUB.box = box;
+  // 노드 ↔ 분대원 배정: 가까운 쌍부터 greedy
+  const pairs = [];
+  names.forEach(k => { const p = hubToField(+nodes[k].x, +nodes[k].y); SQUAD.forEach((s, i) => pairs.push({ k, i, d: Math.hypot(p.x - s.x, p.y - s.y) })); });
+  pairs.sort((a, b) => a.d - b.d);
+  const usedI = new Set();
+  for (const q of pairs) if (!(q.k in HUB.slot) && !usedI.has(q.i)) { HUB.slot[q.k] = q.i; usedI.add(q.i); }
+  log('허브 노드 배정 · ' + names.map(k => k in HUB.slot ? `${k}→${SQUAD[HUB.slot[k]].id}` : `${k}→(초과)`).join(' '), 'ok');
+  return box;
+}
+function hubToField(x, y) {
+  const b = HUB.box;
+  return { x: (x - b.x0) / (b.x1 - b.x0) * W, y: (b.y1 - y) / (b.y1 - b.y0) * H };
+}
+function hubGridToProb(g) {
+  const b = HUB.box, v = g && g.v;
+  if (!b || !Array.isArray(v) || !v.length || !(g.step > 0)) return null;
+  const ny = v.length, nx = Math.max(...v.map(r => (Array.isArray(r) ? r.length : 0)));
+  if (!nx) return null;
+  const at = (iy, ix) => { const c = v[iy] && v[iy][ix]; return (c == null || !isFinite(c)) ? 0 : Math.max(0, +c); };
+  const out = new Float32Array(N);
+  for (let k = 0; k < N; k++) {
+    const hx = b.x0 + GX[k] / W * (b.x1 - b.x0), hy = b.y1 - GY[k] / H * (b.y1 - b.y0);
+    const fx = (hx - g.x0) / g.step, fy = (hy - g.y0) / g.step;
+    if (fx < -.5 || fy < -.5 || fx > nx - .5 || fy > ny - .5) continue;   // 허브 격자 밖
+    const sx = clamp(fx, 0, nx - 1), sy = clamp(fy, 0, ny - 1);
+    const ix = Math.min(nx - 2, Math.floor(sx)), iy = Math.min(ny - 2, Math.floor(sy));
+    if (nx < 2 || ny < 2) { out[k] = at(Math.round(sy), Math.round(sx)); continue; }
+    const ax = sx - ix, ay = sy - iy;
+    out[k] = (at(iy, ix) * (1 - ax) + at(iy, ix + 1) * ax) * (1 - ay) + (at(iy + 1, ix) * (1 - ax) + at(iy + 1, ix + 1) * ax) * ay;
+  }
+  return normalize(out) ? out : null;
+}
+function fromHubFrame(m) {
+  const box = hubLayout(m.nodes);
+  const rssi = [null, null, null, null];
+  let strong = false;
+  for (const k in m.nodes) {
+    const nd = m.nodes[k], i = HUB.slot[k];
+    if (i == null || !nd || !nd.fresh || nd.rssi == null || !isFinite(nd.rssi)) continue;
+    rssi[i] = +nd.rssi; if (nd.rssi > CFG.DETECT_DBM) strong = true;
+  }
+  const out = { hub: true, rssi, prob: box && m.grid ? hubGridToProb(m.grid) : null };
+  out.detected = !!out.prob && strong;
+  // EKF 추적 중이면 pos + vel·t 를 예측 경로로 사용
+  const kf = m.kalman;
+  if (box && kf && typeof kf.state === 'string' && !kf.state.trim().startsWith('init') && Array.isArray(kf.pos) && Array.isArray(kf.vel)) {
+    out.path = []; out.pathSrc = 'EKF';
+    for (let s = 1; s <= CFG.PRED_STEPS; s++) { const tt = s * CFG.PRED_DT, p = hubToField(kf.pos[0] + kf.vel[0] * tt, kf.pos[1] + kf.vel[1] * tt); out.path.push([p.x, p.y, tt]); }
+  }
+  return out;
+}
+
+/* ======================= INGEST ======================= */
+function handleText(txt, src) {
+  txt = String(txt).trim(); if (!txt) return;
+  let m;
+  try { m = JSON.parse(txt); }
+  catch {
+    // Python json.dumps 는 NaN/Infinity 를 그대로 내보냄 → null 로 바꿔 재시도
+    try { m = JSON.parse(txt.replace(/-?\bInfinity\b|\bNaN\b/g, 'null')); }
+    catch { if (/^[\s\d.,;+-]+$/.test(txt)) { const nums = txt.split(/[,\s;]+/).map(Number).filter(v => isFinite(v)); if (nums.length >= 2) m = { rssi: nums.slice(0, 4) }; } if (!m) return; }
+  }
+  if (m && typeof m === 'object' && !Array.isArray(m) && m.nodes && typeof m.nodes === 'object' && !Array.isArray(m.nodes)) m = fromHubFrame(m);
+  if (Array.isArray(m)) m = typeof m[0] === 'number' ? { rssi: m } : { grid: m };
+  ingest(m, src);
+}
+function ingest(m, src) {
+  if (!m || typeof m !== 'object') return;
+  const t = now();
+  if (src !== 'sim' && S.sim.mode !== 'off') { S.sim.mode = 'off'; log('실데이터 수신 → 시뮬레이션 중지', 'warn'); }
+  if (S.lastMsg) { const hz = 1000 / Math.max(1, t - S.lastMsg); S.rate = S.rate ? S.rate*.85 + hz*.15 : hz; }
+  S.lastMsg = t; S.src = src;
+  if (Array.isArray(m.rssi)) m.rssi.slice(0, 4).forEach((v, k) => {
+    const val = (v == null || !isFinite(+v)) ? null : +v; S.rssi[k] = val; S.rssiT[k] = t;
+    const h = S.rssiHist[k]; h.push(val); if (h.length > 90) h.shift();
+  });
+  let p = null;
+  if (m.hub) { p = m.prob; S.kind = 'HUB'; }
+  else if (m.grid) { p = fromGrid(m.grid, m.w, m.h); S.kind = 'GRID'; }
+  else if (isFinite(m.x) && isFinite(m.y)) { p = fromGauss(+m.x, +m.y, +(m.sigma || CFG.DEFAULT_SIGMA)); S.kind = 'XY'; }
+  else if (Array.isArray(m.rssi)) { const ok = S.rssi.some(v => v != null && v > CFG.DETECT_DBM); if (ok) p = fromRSSI(S.rssi); S.kind = 'RSSI→LOCAL'; }
+  const det = typeof m.detected === 'boolean' ? m.detected : !!p;
+  if (m.path || m.pred) {
+    const pp = (m.path || m.pred).filter(q => Array.isArray(q) && q.length >= 2).map((q, k) => ({ x: +q[0], y: +q[1], t: q.length > 2 && isFinite(q[2]) ? +q[2] : (k + 1) * CFG.PRED_DT }));
+    if (pp.length) { S.extPred = pp; S.extPredT = t; S.extPredSrc = m.pathSrc || 'CLIKA'; }
+  }
+  if (p && det) {
+    if (!S.hasProb || !S.detected) S.prob.set(p);
+    else { const a = m.hub ? CFG.EMA_HUB : CFG.EMA; for (let k = 0; k < N; k++) S.prob[k] = S.prob[k]*(1-a) + p[k]*a; normalize(S.prob); }
+    S.hasProb = true; S.heatDirty = true; derive();
+  }
+  setDetected(det);
+}
+
+function setDetected(d) {
+  const t = now();
+  if (d) { S.lastDetT = t; if (!S.detected) { S.detected = true; onContact(); } }
+  else if (S.detected && t - S.lastDetT > 1500) lost('RF 신호 소실 · 표적 이탈');
+}
+function onContact() {
+  log('RF 신호 탐지 · 적 FPV 추정', 'crit');
+  if (S.mode === 1) log('탐지기 모드 — 방향·거리 산출 불가', 'warn');
+  if (CFG.AUTO_ALERT && !S.episodeAlerted) { showAlert(); S.episodeAlerted = true; }
+  S.nextBeep = 0;
+}
+function lost(msg) {
+  S.detected = false; S.target = -1; S.prevTarget = -1; S.critLogged = -1; S.episodeAlerted = false; S.est = null;
+  log(msg, 'ok');
+}
+
+/* ======================= DERIVED METRICS ======================= */
+function contour(f, nx, ny, lv) {
+  const segs = [];
+  const L = (p, q) => (q === p ? .5 : clamp((lv - p) / (q - p), 0, 1));
+  for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = f[j*nx+i], b = f[j*nx+i+1], c = f[(j+1)*nx+i+1], d = f[(j+1)*nx+i];
+    const idx = (a > lv ? 8 : 0) | (b > lv ? 4 : 0) | (c > lv ? 2 : 0) | (d > lv ? 1 : 0);
+    if (idx === 0 || idx === 15) continue;
+    const T = [i + L(a, b), j], R = [i + 1, j + L(b, c)], B = [i + L(d, c), j + 1], Lf = [i, j + L(a, d)];
+    switch (idx) {
+      case 1: case 14: segs.push(Lf, B); break;
+      case 2: case 13: segs.push(B, R); break;
+      case 3: case 12: segs.push(Lf, R); break;
+      case 4: case 11: segs.push(T, R); break;
+      case 5: segs.push(T, R, Lf, B); break;
+      case 6: case 9: segs.push(T, B); break;
+      case 7: case 8: segs.push(T, Lf); break;
+      case 10: segs.push(T, Lf, B, R); break;
+    }
+  }
+  return segs;
+}
+
+function derive() {
+  const pr = S.prob;
+  let mi = 0; for (let k = 1; k < N; k++) if (pr[k] > pr[mi]) mi = k;
+  S.vmax = pr[mi];
+  const ci = mi % NX, cj = (mi / NX) | 0; let sx = 0, sy = 0, sw = 0;
+  for (let j = Math.max(0, cj-3); j <= Math.min(NY-1, cj+3); j++) for (let i = Math.max(0, ci-3); i <= Math.min(NX-1, ci+3); i++) { const k = j*NX+i, w = pr[k]; sx += GX[k]*w; sy += GY[k]*w; sw += w; }
+  const raw = { x: sx / sw, y: sy / sw };
+  S.est = (S.est && S.detected) ? { x: S.est.x + (raw.x - S.est.x) * .4, y: S.est.y + (raw.y - S.est.y) * .4 } : raw;
+  const s = Float32Array.from(pr).sort();
+  let acc = 0, t50 = 0, t90 = 0, n50 = 0;
+  for (let k = N - 1; k >= 0; k--) { acc += s[k]; if (!t50 && acc >= .5) { t50 = s[k]; n50 = N - k; } if (acc >= .9) { t90 = s[k]; break; } }
+  S.cepU = Math.sqrt(n50 * CW * CH / Math.PI);
+  S.c50 = contour(pr, NX, NY, t50); S.c90 = contour(pr, NX, NY, t90);
+  const cx = W / 2, cy = H / 2;
+  S.brg = bearing(cx, cy, S.est.x, S.est.y);
+  S.rangeU = Math.hypot(S.est.x - cx, S.est.y - cy);
+  const t = now();
+  if (t - S.lastTrackT > 220) { S.track.push({ x: S.est.x, y: S.est.y }); if (S.track.length > 28) S.track.shift(); S.lastTrackT = t; }
+
+  const R = CFG.ENGAGE_M / CFG.UNIT_M, R2 = R * R;
+  S.risk = SQUAD.map((sq0, si) => {
+    const sq = S.sp[si];
+    let pin = 0; for (let k = 0; k < N; k++) { const dx = GX[k]-sq.x, dy = GY[k]-sq.y; if (dx*dx + dy*dy <= R2) pin += pr[k]; }
+    const dU = Math.hypot(S.est.x - sq.x, S.est.y - sq.y), dm = dU * CFG.UNIT_M;
+    const lvl = (pin >= .5 || dm <= CFG.ENGAGE_M) ? 'CRIT' : pin >= .2 ? 'HIGH' : dm <= 150 ? 'MED' : 'LOW';
+    const score = c => { const ccx = (c.x0 + c.x1) / 2, ccy = (c.y0 + c.y1) / 2; return Math.hypot(ccx - S.est.x, ccy - S.est.y) - .35 * Math.hypot(ccx - sq0.x, ccy - sq0.y); };
+    let best = null, bs = -1e9;
+    for (const c of COVERS) { const sc = score(c); if (sc > bs) { bs = sc; best = c; } }
+    const prev = S.coverSel[si];
+    if (prev && prev !== best && bs < score(prev) + .5) best = prev;
+    S.coverSel[si] = best;
+    return { pin, dU, dm, lvl, brg: bearing(sq.x, sq.y, S.est.x, S.est.y), cover: best };
+  });
+  let ti = 0; S.risk.forEach((r, i) => { const b = S.risk[ti]; if (r.pin > b.pin + 1e-4 || (Math.abs(r.pin - b.pin) <= 1e-4 && r.dU < b.dU)) ti = i; });
+  if (S.target >= 0 && S.target !== ti && S.risk[ti].pin < S.risk[S.target].pin + .08 && S.risk[ti].dU > S.risk[S.target].dU - .3) ti = S.target;
+  if (ti !== S.target) S.trendHist = [];
+  S.target = ti;
+  const tr = S.risk[ti];
+  S.trendHist.push({ t, d: tr.dm }); while (S.trendHist.length && t - S.trendHist[0].t > 1600) S.trendHist.shift();
+  if (S.mode === 2 && S.detected) {
+    if (S.prevTarget !== ti) { log(`표적 판정 → ${SQUAD[ti].full} (${SQUAD[ti].call}) · 근접확률 ${Math.round(tr.pin*100)}%`, 'crit'); S.prevTarget = ti; }
+    if (tr.lvl === 'CRIT' && S.critLogged !== ti) { log(`${SQUAD[ti].full} ${CFG.ENGAGE_M} m 교전권 진입 — 사격 대응`, 'crit'); S.critLogged = ti; }
+  }
+  predict();
+}
+
+/* ======================= PATH PREDICTION ======================= */
+function predict() {
+  const t = now(); S.predHit = null;
+  if (S.extPred && t - S.extPredT < CFG.DATA_TIMEOUT_MS) { S.predPath = S.extPred; S.predSrc = S.extPredSrc || 'CLIKA'; }
+  else {
+    // 데모용 예측: 현재 속도 + 표적 병사 방향 돌입(FPV 특성) 혼합. 실제 CLIKA 데이터가 들어오면 자동 대체.
+    let vx = 0, vy = 0; const tr = S.track;
+    if (tr.length >= 4) { const a = tr[tr.length - 4], b = tr[tr.length - 1]; vx = (b.x - a.x) / .66; vy = (b.y - a.y) / .66; }
+    const tg = S.target >= 0 ? S.sp[S.target] : { x: W / 2, y: H / 2 };
+    let x = S.est.x, y = S.est.y; const out = [];
+    const sp0 = clamp(Math.hypot(vx, vy), .35, 1.2);
+    for (let k = 1; k <= CFG.PRED_STEPS; k++) {
+      const hx = tg.x - x, hy = tg.y - y, hl = Math.hypot(hx, hy) || 1;
+      const vl = Math.hypot(vx, vy) || 1, wv = Math.max(0, .65 - k * .12);
+      let dx = (vx / vl) * wv + (hx / hl) * (1 - wv), dy = (vy / vl) * wv + (hy / hl) * (1 - wv); const dl = Math.hypot(dx, dy) || 1;
+      const step = Math.min(sp0 * CFG.PRED_DT, hl); x += dx / dl * step; y += dy / dl * step;
+      out.push({ x, y, t: k * CFG.PRED_DT }); if (hl < .12) break;
+    }
+    S.predPath = out; S.predSrc = 'SIM';
+  }
+  const R = CFG.ENGAGE_M / CFG.UNIT_M;
+  const pts = [{ x: S.est.x, y: S.est.y, t: 0 }, ...S.predPath];
+  for (const p of pts) { for (let i = 0; i < SQUAD.length; i++) { if (Math.hypot(p.x - S.sp[i].x, p.y - S.sp[i].y) <= R) { S.predHit = { i, t: p.t, x: p.x, y: p.y }; break; } } if (S.predHit) break; }
+}
+
+/* ======================= SOLDIER RESPONSE ======================= */
+function coverSlot(i) {
+  const c = S.coverSel[i]; if (!c) return { x: SQUAD[i].x, y: SQUAD[i].y };
+  const base = coverPoint(c), users = SQUAD.map((_, k) => k).filter(k => S.coverSel[k] === c && S.st[k] !== 'ENGAGE');
+  const n = users.length, r = users.indexOf(i), off = n > 1 ? (r - (n - 1) / 2) * .26 : 0;
+  return { x: clamp(base.x + off, c.x0 + .05, c.x1 - .05), y: base.y };
+}
+function moveSoldiers(dt) {
+  const act = S.mode === 2 && S.detected && S.est && S.risk[0];
+  SQUAD.forEach((sq, i) => {
+    const p = S.sp[i], r = S.risk[i]; let d, st;
+    const keepFire = S.st[i] === 'ENGAGE' && (r && (r.lvl === 'CRIT' || r.lvl === 'HIGH'));
+    if (act && ((i === S.target && r.lvl === 'CRIT') || keepFire)) { d = { x: p.x, y: p.y }; st = 'ENGAGE'; }
+    else if (act) { d = coverSlot(i); st = 'MOVE'; }
+    else { d = { x: sq.x, y: sq.y }; st = 'HOLD'; }
+    S.dest[i] = d;
+    const dx = d.x - p.x, dy = d.y - p.y, dl = Math.hypot(dx, dy), v = CFG.MOVE_SPEED * (act && i === S.target ? 1.3 : 1) * dt;
+    if (dl > .02) { const k = Math.min(1, v / dl); p.x += dx * k; p.y += dy * k; }
+    if (st === 'MOVE' && (dl < .05 || (S.st[i] === 'COVER' && dl < .3))) st = 'COVER';
+    if (st === 'HOLD' && dl > .05) st = 'RETURN';
+    if (st !== S.st[i]) {
+      if (st === 'MOVE') log(`${sq.full} → ${S.coverSel[i].name} 이동 개시`, 'warn');
+      if (st === 'COVER') log(`${sq.full} ${S.coverSel[i].name} 엄폐 완료`, 'ok');
+      if (st === 'ENGAGE') log(`${sq.full} 사격 대응 · ${cardinal(r.brg)} ${Math.round(r.dm)} m`, 'crit');
+      S.st[i] = st;
+    }
+  });
+}
+function coverPoint(c) {
+  if (!S.est) return { x: (c.x0 + c.x1) / 2, y: (c.y0 + c.y1) / 2 };
+  const cx = (c.x0 + c.x1) / 2, cy = (c.y0 + c.y1) / 2;
+  let vx = cx - S.est.x, vy = cy - S.est.y; const l = Math.hypot(vx, vy) || 1; vx /= l; vy /= l;
+  return { x: cx + vx * .32, y: cy + vy * .32 };
+}
+
+/* ======================= TERRAIN (procedural DMZ ridge, plain) ======================= */
+function rng(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+let veg = null;
+const elev = (() => {
+  const r = rng(1953), G = 32, lat = new Float32Array(G * G).map(() => r());
+  const sm = t => t * t * (3 - 2 * t);
+  const vn = (x, y) => { const xi = Math.floor(x), yi = Math.floor(y), fx = sm(x - xi), fy = sm(y - yi);
+    const at = (i, j) => lat[((j % G + G) % G) * G + ((i % G + G) % G)];
+    return (at(xi, yi)*(1-fx) + at(xi+1, yi)*fx)*(1-fy) + (at(xi, yi+1)*(1-fx) + at(xi+1, yi+1)*fx)*fy; };
+  const fbm = (x, y) => { let s = 0, a = .5, f = 1; for (let o = 0; o < 4; o++) { s += a * vn(x*f + o*3.1, y*f + o*1.7); a *= .5; f *= 2.03; } return s; };
+  veg = (u, v) => fbm(u * 1.1 + 90, v * 1.1 + 13);
+  return (u, v) => {
+    let e = fbm(u * .7 + 40, v * .7 + 40) * 1.1;
+    e += .5 * Math.exp(-Math.pow((u - .9) * .55 + (v - .6) * .25, 2) * 2.2);
+    e += .35 * Math.exp(-Math.pow(u - 3.4, 2) * .9 - Math.pow(v - .4, 2) * .7);
+    e += (1 - clamp(v / H, -.6, 1.6)) * .25;
+    e -= .18 * Math.exp(-Math.pow(u - 2, 2) * 2.5);
+    return e;
+  };
+})();
+
+/* ======================= MAP RENDERING ======================= */
+const cv = $('#map'), ctx = cv.getContext('2d');
+const stat = document.createElement('canvas'), sctx = stat.getContext('2d');
+const hc = document.createElement('canvas'); hc.width = NX; hc.height = NY;
+const hctx = hc.getContext('2d'), himg = hctx.createImageData(NX, NY);
+let VW = 0, VH = 0, DPR = 1, F = { x: 0, y: 0, w: 1, h: 1, s: 1 };
+const P = (x, y) => [F.x + x * F.s, F.y + y * F.s];
+
+const LUT = (() => {
+  const st = [[0, 255,180,40, 0], [.18, 255,176,32, .18], [.42, 255,128,30, .45], [.68, 255,70,45, .72], [.88, 255,60,55, .88], [1, 255,236,214, .96]];
+  const out = new Uint8ClampedArray(256 * 4);
+  for (let i = 0; i < 256; i++) {
+    const v = i / 255; let a = 0; while (a < st.length - 2 && v > st[a+1][0]) a++;
+    const A = st[a], B = st[a+1], f = (v - A[0]) / (B[0] - A[0]);
+    for (let c = 0; c < 4; c++) out[i*4+c] = (A[c+1] + (B[c+1] - A[c+1]) * f) * (c === 3 ? 255 : 1);
+  }
+  return out;
+})();
+
+function resize() {
+  VW = window.innerWidth; VH = window.innerHeight;
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  for (const c of [cv, stat]) { c.width = Math.round(VW * DPR); c.height = Math.round(VH * DPR); }
+  cv.style.width = VW + 'px'; cv.style.height = VH + 'px';
+  const r = $('#mapcol').getBoundingClientRect();
+  const m = { t: 52, b: 64, l: 40, r: 40 }, aw = r.width - m.l - m.r, ah = r.height - m.t - m.b, s = Math.min(aw / W, ah / H);
+  F = { s, w: W * s, h: H * s, x: r.left + m.l + (aw - W * s) / 2, y: r.top + m.t + (ah - H * s) / 2 };
+  buildStatic();
+}
+
+function buildStatic() {
+  const g = sctx; g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, VW, VH);
+  g.fillStyle = '#0b0f0d'; g.fillRect(0, 0, VW, VH);
+  // ===== full-bleed tactical topo map =====
+  const st = 6, TX = Math.ceil(VW / st) + 2, TY = Math.ceil(VH / st) + 2, h = new Float32Array(TX * TY), vg = new Float32Array(TX * TY);
+  const U = i => (i * st - F.x) / F.s, V = j => (j * st - F.y) / F.s;
+  let mn = 1e9, mx = -1e9;
+  for (let j = 0; j < TY; j++) for (let i = 0; i < TX; i++) { const k = j * TX + i, e = elev(U(i), V(j)); h[k] = e; vg[k] = veg(U(i), V(j)); if (e < mn) mn = e; if (e > mx) mx = e; }
+  for (let k = 0; k < h.length; k++) h[k] = (h[k] - mn) / (mx - mn);
+  const M = e => 300 + e * 260;  // elevation (m)
+  const HYP = [[0, 22,38,28], [.3, 30,46,31], [.55, 44,52,34], [.75, 58,54,38], [1, 74,64,46]];
+  const hyp = e => { let a = 0; while (a < HYP.length - 2 && e > HYP[a+1][0]) a++; const A = HYP[a], B = HYP[a+1], f = (e - A[0]) / (B[0] - A[0]); return [0,1,2].map(c => A[c+1] + (B[c+1] - A[c+1]) * f); };
+  const tc = document.createElement('canvas'); tc.width = TX; tc.height = TY;
+  const tx = tc.getContext('2d'), img = tx.createImageData(TX, TY);
+  for (let j = 0; j < TY; j++) for (let i = 0; i < TX; i++) {
+    const k = j * TX + i, e = h[k];
+    const gx = h[j*TX + Math.min(TX-1, i+1)] - h[j*TX + Math.max(0, i-1)], gy = h[Math.min(TY-1, j+1)*TX + i] - h[Math.max(0, j-1)*TX + i];
+    const sh = clamp(1 + (-(gx) - (gy)) * 9, .62, 1.38);
+    let [r0, g0, b0] = hyp(e);
+    const fo = clamp((vg[k] - .52) * 6, 0, 1) * .55;            // forest tint
+    r0 = r0 * (1 - fo) + 20 * fo; g0 = g0 * (1 - fo) + 52 * fo; b0 = b0 * (1 - fo) + 30 * fo;
+    img.data[k*4] = r0 * sh; img.data[k*4+1] = g0 * sh; img.data[k*4+2] = b0 * sh; img.data[k*4+3] = 255;
+  }
+  tx.putImageData(img, 0, 0);
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(tc, 0, 0, TX * st, TY * st);
+  // forest symbols
+  const rr = rng(311); g.strokeStyle = 'rgba(120,175,110,.38)'; g.lineWidth = 1;
+  for (let y = 4; y < VH; y += 15) for (let x = 4 + (y % 30 ? 7 : 0); x < VW; x += 15) {
+    const i = Math.round(x / st), j = Math.round(y / st); if (i >= TX || j >= TY) continue;
+    if (vg[j * TX + i] > .56 && rr() > .25) { g.beginPath(); g.arc(x + rr() * 4, y + rr() * 4, 2.2, 0, Math.PI * 2); g.stroke(); }
+  }
+  // contours (20 m) + index (100 m) with labels
+  const lab = [];
+  for (let m = Math.ceil(M(0) / 20) * 20; m < M(1); m += 20) {
+    const lv = (m - 300) / 260, idx = m % 100 === 0, segs = contour(h, TX, TY, lv);
+    g.strokeStyle = idx ? 'rgba(214,176,120,.42)' : 'rgba(200,170,120,.20)'; g.lineWidth = idx ? 1.2 : .7;
+    g.beginPath(); for (let q = 0; q < segs.length; q += 2) { g.moveTo(segs[q][0] * st, segs[q][1] * st); g.lineTo(segs[q+1][0] * st, segs[q+1][1] * st); } g.stroke();
+    if (!idx) continue;
+    for (let q = 0; q < segs.length; q += 22) {
+      const ax = segs[q][0] * st, ay = segs[q][1] * st, bx = segs[q+1][0] * st, by = segs[q+1][1] * st, mx2 = (ax + bx) / 2, my2 = (ay + by) / 2;
+      if (lab.some(L => Math.hypot(L[0] - mx2, L[1] - my2) < 230)) continue;
+      lab.push([mx2, my2]); let an = Math.atan2(by - ay, bx - ax); if (an > Math.PI / 2) an -= Math.PI; if (an < -Math.PI / 2) an += Math.PI;
+      g.save(); g.translate(mx2, my2); g.rotate(an); g.font = '600 9.5px "JetBrains Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 4; g.strokeStyle = 'rgba(30,38,28,.95)'; g.strokeText(String(m), 0, 0); g.fillStyle = 'rgba(232,196,140,.85)'; g.fillText(String(m), 0, 0); g.restore();
+    }
+  }
+  // stream through the central valley + supply trail
+  const line = (pts, col, w, dash) => { g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); pts.forEach(([u, v], q) => { const [x, y] = P(u, v); q ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); g.setLineDash([]); };
+  const stream = []; for (let v = -4; v <= 10; v += .1) stream.push([2.05 + .32 * Math.sin(v * 1.3) + .12 * Math.sin(v * 3.1), v]);
+  line(stream, 'rgba(95,165,225,.55)', 1.8);
+  const trail = []; for (let v = -4; v <= 10; v += .1) trail.push([6.3 + .5 * Math.sin(v * .7 + 1), v]);
+  line(trail, 'rgba(235,205,150,.45)', 1.4, [7, 5]);
+  const trail2 = []; for (let u = -6; u <= 10; u += .1) trail2.push([u, 6.4 + .25 * Math.sin(u * .9)]);
+  line(trail2, 'rgba(235,205,150,.35)', 1.2, [7, 5]);
+  // MDL line just north of the squad area
+  const [, mdlY] = P(0, -.32);
+  g.strokeStyle = 'rgba(255,74,58,.7)'; g.lineWidth = 1.4; g.setLineDash([10, 4, 2, 4]); g.beginPath(); g.moveTo(0, mdlY); g.lineTo(VW, mdlY); g.stroke(); g.setLineDash([]);
+  // spot heights (local maxima)
+  const peaks = [];
+  for (let j = 3; j < TY - 3; j += 3) for (let i = 3; i < TX - 3; i += 3) {
+    const e = h[j * TX + i]; if (e < .62) continue; let ok = true;
+    for (let dj = -6; dj <= 6 && ok; dj += 2) for (let di = -6; di <= 6; di += 2) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= TX || jj >= TY) continue; if (h[jj * TX + ii] > e) { ok = false; break; } }
+    if (ok && !peaks.some(p => Math.hypot(p[0] - i * st, p[1] - j * st) < 180)) peaks.push([i * st, j * st, M(e)]);
+  }
+  g.font = '700 10px "JetBrains Mono", monospace'; g.textAlign = 'left'; g.textBaseline = 'middle';
+  peaks.forEach(([x, y, m]) => { g.fillStyle = 'rgba(240,225,200,.9)'; g.beginPath(); g.moveTo(x, y - 5); g.lineTo(x + 5, y + 4); g.lineTo(x - 5, y + 4); g.closePath(); g.fill();
+    g.lineWidth = 3; g.strokeStyle = 'rgba(30,38,28,.9)'; g.strokeText(`${Math.round(m)}`, x + 8, y); g.fillText(`${Math.round(m)}`, x + 8, y); });
+  // MGRS-style grid (every 2 cells = 100 m) across the screen
+  g.strokeStyle = 'rgba(120,180,230,.13)'; g.lineWidth = 1; g.beginPath();
+  for (let u = Math.floor(-F.x / F.s / 2) * 2; ; u += 2) { const [x] = P(u, 0); if (x > VW) break; g.moveTo(x + .5, 0); g.lineTo(x + .5, VH); }
+  for (let v = Math.floor(-F.y / F.s / 2) * 2; ; v += 2) { const [, y] = P(0, v); if (y > VH) break; g.moveTo(0, y + .5); g.lineTo(VW, y + .5); }
+  g.stroke();
+  const mc = $('#mapcol').getBoundingClientRect();
+  g.font = '600 9.5px "JetBrains Mono", monospace'; g.fillStyle = 'rgba(140,195,240,.7)'; g.textBaseline = 'top'; g.textAlign = 'left';
+  for (let u = Math.floor((mc.left - F.x) / F.s / 2) * 2; ; u += 2) { const [x] = P(u, 0); if (x > mc.right) break; if (x > mc.left) g.fillText(String(41 + u / 2).padStart(2, '0'), x + 3, mc.top + 4); }
+  for (let v = Math.floor((mc.top - F.y) / F.s / 2) * 2; ; v += 2) { const [, y] = P(0, v); if (y > mc.bottom) break; if (y > mc.top + 14) g.fillText(String(78 - v / 2).padStart(2, '0'), mc.left + 4, y + 3); }
+  // place names
+  const name = (u, v, t2, a) => { const [x, y] = P(u, v); g.font = 'italic 500 11px "Noto Sans KR", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 3; g.strokeStyle = 'rgba(25,32,24,.9)'; g.strokeText(t2, x, y); g.fillStyle = a || 'rgba(225,215,190,.7)'; g.fillText(t2, x, y); };
+  name(2.0, 4.25, '중앙 계곡 · 개활지'); name(2.0, -.55, 'MDL · 군사분계선 방면', 'rgba(255,140,125,.9)');
+  name(-1.4, 1.2, '서측 능선'); name(5.4, 1.4, '동측 능선'); name(6.3, 3.6, '보급로', 'rgba(235,205,150,.8)'); name(2.6, 5.6, '계곡천', 'rgba(130,185,235,.85)');
+  // dim outside the squad area (light)
+  g.fillStyle = 'rgba(0,0,0,.16)'; g.beginPath(); g.rect(0, 0, VW, VH); g.rect(F.x, F.y, F.w, F.h); g.fill('evenodd');
+  g.fillStyle = 'rgba(0,0,0,.10)'; g.fillRect(F.x, F.y, F.w, F.h);
+  // light grid
+  g.strokeStyle = 'rgba(210,230,210,.08)'; g.lineWidth = 1; g.setLineDash([2, 5]); g.beginPath();
+  for (let i = 1; i < W; i++) { const [x] = P(i, 0); g.moveTo(x + .5, F.y); g.lineTo(x + .5, F.y + F.h); }
+  for (let j = 1; j < H; j++) { const [, y] = P(0, j); g.moveTo(F.x, y + .5); g.lineTo(F.x + F.w, y + .5); }
+  g.stroke(); g.setLineDash([]);
+  // border
+  g.strokeStyle = 'rgba(210,230,210,.34)'; g.lineWidth = 1; g.strokeRect(F.x + .5, F.y + .5, F.w - 1, F.h - 1);
+  g.strokeStyle = 'rgba(226,233,224,.85)'; g.lineWidth = 1.6;
+  [[F.x, F.y, 1, 1], [F.x + F.w, F.y, -1, 1], [F.x, F.y + F.h, 1, -1], [F.x + F.w, F.y + F.h, -1, -1]].forEach(([x, y, sx, sy]) => {
+    g.beginPath(); g.moveTo(x + 18 * sx, y); g.lineTo(x, y); g.lineTo(x, y + 18 * sy); g.stroke(); });
+  // minimal labels
+  g.font = '600 10px "JetBrains Mono", monospace'; g.textBaseline = 'alphabetic';
+  g.textAlign = 'right'; g.fillStyle = 'rgba(240,240,230,.9)'; g.font = '700 12px "JetBrains Mono", monospace'; g.fillText('N ↑', F.x + F.w - 26, F.y - 14);
+  const by = F.y + F.h + 30, bx = F.x + F.w / 2 - F.s / 2; g.fillStyle = 'rgba(226,233,224,.7)'; g.fillRect(bx, by, F.s, 2);
+  g.fillRect(bx, by - 4, 1, 6); g.fillRect(bx + F.s - 1, by - 4, 1, 6);
+  g.font = '500 10px "JetBrains Mono", monospace'; g.textAlign = 'center'; g.fillStyle = 'rgba(210,230,210,.6)';
+  g.fillText(`${CFG.UNIT_M} m  ·  축척 가정 1칸 = ${CFG.UNIT_M} m`, F.x + F.w / 2, by + 16);
+  // covers: tall grass
+  const r = rng(77);
+  for (const c of COVERS) {
+    const [x0, y0] = P(c.x0, c.y0), [x1, y1] = P(c.x1, c.y1), w = x1 - x0, hh = y1 - y0;
+    g.save(); g.beginPath(); g.roundRect ? g.roundRect(x0, y0, w, hh, hh / 2) : g.rect(x0, y0, w, hh);
+    g.fillStyle = 'rgba(118,150,62,.22)'; g.fill(); g.strokeStyle = 'rgba(170,205,105,.6)'; g.setLineDash([4, 3]); g.lineWidth = 1; g.stroke(); g.setLineDash([]);
+    g.clip(); g.strokeStyle = 'rgba(185,220,120,.45)'; g.lineWidth = 1;
+    const n = Math.round(w * hh / 70);
+    for (let q = 0; q < n; q++) {
+      const tx2 = x0 + r() * w, ty = y0 + 4 + r() * (hh - 2), s2 = 3 + r() * 3;
+      g.beginPath(); g.moveTo(tx2, ty); g.lineTo(tx2 - s2 * .45, ty - s2); g.moveTo(tx2, ty); g.lineTo(tx2, ty - s2 * 1.25); g.moveTo(tx2, ty); g.lineTo(tx2 + s2 * .45, ty - s2); g.stroke();
+    }
+    g.restore();
+    g.font = '600 9.5px "JetBrains Mono", monospace'; g.fillStyle = 'rgba(190,225,130,.85)'; g.textAlign = 'center';
+    g.fillText(`${c.name} · 긴 풀`, x0 + w / 2, y1 + 14);
+  }
+}
+
+const SOLDIER = new Path2D('M5 11.2C5 6.7 8.2 4 12 4s7 2.7 7 7.2l1.6.5v1.1H3.4v-1.1zM8.6 13.6h6.8l-.4 2c-.5 1.2-1.6 1.8-3 1.8s-2.5-.6-3-1.8zM3.6 22c.6-2.9 3-4.3 5.6-4.7L12 19.2l2.8-1.9c2.6.4 5 1.8 5.6 4.7z');
+const SOLDIER_SVG = '<svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="15.5" fill="rgba(124,198,255,.16)" stroke="#7cc6ff" stroke-width="1.6"/><g transform="translate(5 4.4)"><path fill="#cfe9ff" d="M5 11.2C5 6.7 8.2 4 12 4s7 2.7 7 7.2l1.6.5v1.1H3.4v-1.1zM8.6 13.6h6.8l-.4 2c-.5 1.2-1.6 1.8-3 1.8s-2.5-.6-3-1.8zM3.6 22c.6-2.9 3-4.3 5.6-4.7L12 19.2l2.8-1.9c2.6.4 5 1.8 5.6 4.7z"/></g></svg>';
+const LV = { CRIT: '#ff3b30', HIGH: '#ff8a1e', MED: '#ffcf4a', LOW: '#8ddc97', UNK: '#ffb21e' };
+
+function drawHeat() {
+  if (S.heatDirty) {
+    const d = himg.data, vm = S.vmax || 1e-9;
+    for (let k = 0; k < N; k++) { const r0 = Math.min(1, S.prob[k] / vm), v = r0 < CFG.HEAT_CUT ? 0 : Math.pow((r0 - CFG.HEAT_CUT) / (1 - CFG.HEAT_CUT), CFG.HEAT_GAMMA), q = (v * 255) | 0;
+      d[k*4] = LUT[q*4]; d[k*4+1] = LUT[q*4+1]; d[k*4+2] = LUT[q*4+2]; d[k*4+3] = LUT[q*4+3]; }
+    hctx.putImageData(himg, 0, 0); S.heatDirty = false;
+  }
+  ctx.save(); ctx.beginPath(); ctx.rect(F.x, F.y, F.w, F.h); ctx.clip();
+  ctx.globalAlpha = S.heatA; ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.filter = `blur(${Math.max(2, F.s * .035)}px)`; ctx.drawImage(hc, F.x, F.y, F.w, F.h); ctx.filter = 'none';
+  const gp = (gi, gj) => [F.x + (gi + .5) * CW * F.s, F.y + (gj + .5) * CH * F.s];
+  const seg = (arr, col, lw, dash) => { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.setLineDash(dash); ctx.beginPath();
+    for (let q = 0; q < arr.length; q += 2) { const a = gp(...arr[q]), b = gp(...arr[q+1]); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); } ctx.stroke(); ctx.setLineDash([]); };
+  seg(S.c90, 'rgba(255,190,80,.75)', 1.1, [4, 4]);
+  seg(S.c50, 'rgba(255,90,60,.95)', 1.6, []);
+  ctx.restore(); ctx.globalAlpha = 1;
+}
+
+function arrow(x0, y0, x1, y1, col, lw, dash) {
+  const a = Math.atan2(y1 - y0, x1 - x0);
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = lw; ctx.setLineDash(dash || []);
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1 - Math.cos(a) * 7, y1 - Math.sin(a) * 7); ctx.stroke(); ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - Math.cos(a - .45) * 10, y1 - Math.sin(a - .45) * 10); ctx.lineTo(x1 - Math.cos(a + .45) * 10, y1 - Math.sin(a + .45) * 10); ctx.closePath(); ctx.fill();
+}
+
+function drawSoldiers(t) {
+  const live = S.detected, m2 = S.mode === 2 && live && S.est;
+  // fixed sensor nodes (stay at the corners)
+  SQUAD.forEach(sq => { const [nx, ny] = P(sq.x, sq.y);
+    ctx.fillStyle = 'rgba(8,12,10,.9)'; ctx.strokeStyle = 'rgba(141,220,151,.9)'; ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.moveTo(nx, ny - 6); ctx.lineTo(nx + 6, ny); ctx.lineTo(nx, ny + 6); ctx.lineTo(nx - 6, ny); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.font = '600 8.5px "JetBrains Mono", monospace'; ctx.fillStyle = 'rgba(141,220,151,.85)'; ctx.textAlign = sq.x < W / 2 ? 'right' : 'left';
+    ctx.fillText(sq.id, nx + (sq.x < W / 2 ? -9 : 9), ny + (sq.y < H / 2 ? -8 : 14)); });
+  SQUAD.forEach((sq, i) => {
+    const [x, y] = P(S.sp[i].x, S.sp[i].y), r = S.risk[i];
+    const lvl = !live ? null : (S.mode === 1 ? 'UNK' : r ? r.lvl : null), col = lvl ? LV[lvl] : null;
+    if (col) {
+      const ph = (t / (lvl === 'CRIT' ? 450 : 900) + i * .25) % 1;
+      ctx.strokeStyle = col; ctx.globalAlpha = (1 - ph) * .8; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, y, 18 + ph * 26, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    if (m2 && i === S.target) {
+      ctx.strokeStyle = '#ff3b30'; ctx.lineWidth = 2; const b = 24, l = 8;
+      [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([sx, sy]) => { ctx.beginPath(); ctx.moveTo(x + sx*b, y + sy*(b-l)); ctx.lineTo(x + sx*b, y + sy*b); ctx.lineTo(x + sx*(b-l), y + sy*b); ctx.stroke(); });
+    }
+    // engage line
+    if (m2 && S.st[i] === 'ENGAGE') {
+      const [dx2, dy2] = P(S.est.x, S.est.y), fl = (t / 120) % 2 < 1;
+      ctx.strokeStyle = fl ? 'rgba(255,230,120,.95)' : 'rgba(255,120,60,.7)'; ctx.lineWidth = 2; ctx.setLineDash([3, 5]);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(dx2, dy2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = '700 10px "JetBrains Mono", monospace'; ctx.textAlign = 'center'; const mx3 = (x + dx2) / 2, my3 = (y + dy2) / 2;
+      ctx.fillStyle = '#ff3b30'; const tw = ctx.measureText('FIRE · 사격').width + 10; ctx.fillRect(mx3 - tw / 2, my3 - 9, tw, 16); ctx.fillStyle = '#fff'; ctx.fillText('FIRE · 사격', mx3, my3 + 3);
+    }
+    // soldier badge
+    ctx.fillStyle = 'rgba(10,16,20,.92)'; ctx.beginPath(); ctx.arc(x, y, 17, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(124,198,255,.18)'; ctx.fill(); ctx.strokeStyle = '#7cc6ff'; ctx.lineWidth = 1.8; ctx.stroke();
+    ctx.save(); ctx.translate(x - 13.2, y - 14); ctx.scale(1.1, 1.1); ctx.fillStyle = '#d6ecff'; ctx.fill(SOLDIER); ctx.restore();
+    if (S.st[i] !== 'HOLD') {
+      ctx.textAlign = 'center'; ctx.font = '700 11.5px "Noto Sans KR", sans-serif';
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(8,12,10,.9)'; ctx.strokeText(sq.full, x, y + 31); ctx.fillStyle = '#e3e9e0'; ctx.fillText(sq.full, x, y + 31);
+      return;
+    }
+    // label inward
+    const west = sq.x < W / 2, north = sq.y < H / 2;
+    const lx = x + (west ? -13 : 13), ly = y + (north ? 30 : -38);
+    ctx.textAlign = west ? 'left' : 'right';
+    ctx.font = '700 13px "Noto Sans KR", sans-serif'; ctx.fillStyle = '#e3e9e0';
+    ctx.fillText(sq.full, lx, ly);
+    ctx.font = '500 9.5px "JetBrains Mono", monospace'; ctx.fillStyle = col || 'rgba(160,185,170,.8)';
+    const sub = `${sq.call} · ${sq.id}` + (m2 && r ? ` · ${Math.round(r.dm)} m` : (live && S.mode === 1 ? ' · ???' : ''));
+    ctx.fillText(sub, lx, ly + 13);
+  });
+}
+
+function drawDrone(t) {
+  const [x, y] = P(S.est.x, S.est.y);
+  const ph = (t / 1100) % 1;
+  ctx.strokeStyle = '#ff4a3a'; ctx.globalAlpha = (1 - ph) * .7; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(x, y, 16 + ph * 22, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+  const s = 15;
+  ctx.fillStyle = 'rgba(255,74,58,.28)'; ctx.strokeStyle = '#ff4a3a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x, y - s); ctx.lineTo(x + s, y); ctx.lineTo(x, y + s); ctx.lineTo(x - s, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(x - 7, y - 2); ctx.lineTo(x, y + 3); ctx.lineTo(x + 7, y - 2); ctx.stroke();
+  const right = S.est.x < W * .62, tx = x + (right ? 24 : -24);
+  ctx.textAlign = right ? 'left' : 'right';
+  ctx.font = '700 11px "JetBrains Mono", monospace'; ctx.fillStyle = '#ff6a5c';
+  ctx.fillText('HOSTILE · FPV UAV', tx, y - 4);
+  ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.fillStyle = 'rgba(255,200,190,.9)';
+  ctx.fillText(`${fmt3(S.brg)}° · ${Math.round(S.rangeU * CFG.UNIT_M)} m · ±${Math.round(S.cepU * CFG.UNIT_M)} m`, tx, y + 10);
+}
+
+function drawTactical(t) {
+  // track
+  if (S.track.length > 1) {
+    for (let q = 1; q < S.track.length; q++) {
+      const a = P(S.track[q-1].x, S.track[q-1].y), b = P(S.track[q].x, S.track[q].y);
+      ctx.strokeStyle = `rgba(255,140,110,${(q / S.track.length) * .3})`; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    }
+    S.track.forEach((p, q) => { if (q % 3) return; const [x, y] = P(p.x, p.y); ctx.fillStyle = `rgba(255,140,110,${(q / S.track.length) * .7})`; ctx.fillRect(x - 1.5, y - 1.5, 3, 3); });
+  }
+  // predicted path: widening corridor + time ticks + predicted entry
+  if (S.predPath && S.predPath.length) {
+    const pts = [{ x: S.est.x, y: S.est.y, t: 0 }, ...S.predPath], n = pts.length, L = [], Rt = [];
+    for (let k = 0; k < n; k++) {
+      const a = pts[Math.max(0, k - 1)], b = pts[Math.min(n - 1, k + 1)]; let dx = b.x - a.x, dy = b.y - a.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+      const w = clamp(S.cepU * .22, .05, .18) + .05 * k;
+      L.push(P(pts[k].x - dy * w, pts[k].y + dx * w)); Rt.push(P(pts[k].x + dy * w, pts[k].y - dx * w));
+    }
+    ctx.save(); ctx.beginPath(); ctx.rect(F.x - 40, F.y - 40, F.w + 80, F.h + 80); ctx.clip();
+    const gc = ctx.createLinearGradient(...P(pts[0].x, pts[0].y), ...P(pts[n - 1].x, pts[n - 1].y));
+    gc.addColorStop(0, 'rgba(255,207,74,.26)'); gc.addColorStop(1, 'rgba(255,207,74,.05)');
+    ctx.fillStyle = gc; ctx.beginPath(); L.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); for (let k = n - 1; k >= 0; k--) ctx.lineTo(Rt[k][0], Rt[k][1]); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,207,74,.35)'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]); ctx.stroke(); ctx.setLineDash([]);
+    const C = pts.map(p => P(p.x, p.y));
+    ctx.strokeStyle = 'rgba(255,215,90,.95)'; ctx.lineWidth = 2; ctx.setLineDash([8, 5]); ctx.beginPath(); C.forEach((p, k) => k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke(); ctx.setLineDash([]);
+    if (n > 1) arrow(C[n - 2][0], C[n - 2][1], C[n - 1][0], C[n - 1][1], 'rgba(255,215,90,.95)', 2);
+    ctx.font = '600 9px "JetBrains Mono", monospace'; ctx.textAlign = 'left';
+    for (let k = 1; k < n - 1; k++) { ctx.fillStyle = '#0b0f0d'; ctx.beginPath(); ctx.arc(C[k][0], C[k][1], 3.5, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#ffd75a'; ctx.lineWidth = 1.4; ctx.stroke();
+      if (k % 2 === 0) { ctx.fillStyle = 'rgba(255,225,140,.95)'; ctx.fillText(`+${pts[k].t.toFixed(1)}s`, C[k][0] + 7, C[k][1] - 5); } }
+    const e = C[n - 1]; ctx.font = '700 9.5px "JetBrains Mono", monospace'; ctx.fillStyle = '#ffd75a'; ctx.fillText(S.predSrc === 'SIM' ? 'PRED · SIM' : 'PRED · ' + S.predSrc, e[0] + 10, e[1] + 14);
+    ctx.restore();
+    if (S.predHit && S.predHit.t > 0) {
+      const [hx, hy] = P(S.predHit.x, S.predHit.y), [sx, sy] = P(S.sp[S.predHit.i].x, S.sp[S.predHit.i].y), pl = .5 + .5 * Math.sin(t / 150);
+      ctx.strokeStyle = `rgba(255,59,48,${.5 + .5 * pl})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hx, hy, 9, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(hx - 6, hy - 6); ctx.lineTo(hx + 6, hy + 6); ctx.moveTo(hx + 6, hy - 6); ctx.lineTo(hx - 6, hy + 6); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,59,48,.45)'; ctx.lineWidth = 1; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(sx, sy); ctx.stroke(); ctx.setLineDash([]);
+      const txt = `예상 진입 · ${SQUAD[S.predHit.i].full} +${S.predHit.t.toFixed(1)}s`;
+      ctx.font = '700 10px "Noto Sans KR", sans-serif'; const tw = ctx.measureText(txt).width + 12, lx = clamp(hx + 14, F.x, F.x + F.w - tw);
+      ctx.fillStyle = 'rgba(30,6,5,.9)'; ctx.fillRect(lx, hy - 22, tw, 17); ctx.strokeStyle = '#ff3b30'; ctx.strokeRect(lx + .5, hy - 21.5, tw - 1, 16);
+      ctx.fillStyle = '#ffb3ab'; ctx.textAlign = 'left'; ctx.fillText(txt, lx + 6, hy - 9.5);
+    }
+  }
+  // engagement ring around target
+  const ti = S.target, r = S.risk[ti];
+  if (ti >= 0 && r) {
+    const sq = SQUAD[ti], [x, y] = P(S.sp[ti].x, S.sp[ti].y), R = CFG.ENGAGE_M / CFG.UNIT_M * F.s, crit = r.lvl === 'CRIT';
+    ctx.save(); ctx.beginPath(); ctx.rect(F.x, F.y, F.w, F.h); ctx.clip();
+    ctx.fillStyle = crit ? `rgba(255,59,48,${.07 + .05 * Math.sin(t / 160)})` : 'rgba(255,59,48,.035)';
+    ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = crit ? 'rgba(255,59,48,.9)' : 'rgba(255,59,48,.45)'; ctx.lineWidth = crit ? 1.6 : 1.1; ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+    const a = Math.atan2(H / 2 - sq.y, W / 2 - sq.x), lx = x + Math.cos(a) * R, ly = y + Math.sin(a) * R;
+    ctx.font = '700 10px "JetBrains Mono", monospace'; ctx.textAlign = 'center';
+    const txt = crit ? `${CFG.ENGAGE_M} m 사거리 진입` : `${CFG.ENGAGE_M} m 교전권`;
+    const tw = ctx.measureText(txt).width + 12;
+    ctx.fillStyle = crit ? '#ff3b30' : 'rgba(20,6,5,.85)'; ctx.fillRect(lx - tw / 2, ly - 9, tw, 17);
+    ctx.fillStyle = crit ? '#fff' : '#ff8f86'; ctx.fillText(txt, lx, ly + 3.5);
+  }
+  // movement arrows (current → cover slot), only while moving
+  SQUAD.forEach((sq, i) => {
+    if (S.st[i] !== 'MOVE') return;
+    const [x0, y0] = P(S.sp[i].x, S.sp[i].y), [x1, y1] = P(S.dest[i].x, S.dest[i].y), dl = Math.hypot(x1 - x0, y1 - y0); if (dl < 28) return;
+    const a = Math.atan2(y1 - y0, x1 - x0);
+    arrow(x0 + Math.cos(a) * 22, y0 + Math.sin(a) * 22, x1, y1, i === S.target ? 'rgba(141,220,151,.95)' : 'rgba(141,220,151,.7)', i === S.target ? 2 : 1.5, [6, 5]);
+  });
+}
+
+function drawIdle(t) {
+  const [cx, cy] = P(W / 2, H / 2), R = Math.hypot(F.w, F.h) * .55, a0 = (t / 2600) * Math.PI * 2;
+  ctx.save(); ctx.beginPath(); ctx.rect(F.x, F.y, F.w, F.h); ctx.clip();
+  for (let q = 0; q < 26; q++) {
+    const a = a0 - q * .022; ctx.strokeStyle = `rgba(141,220,151,${.16 * (1 - q / 26)})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.font = '600 10px "JetBrains Mono", monospace'; ctx.fillStyle = 'rgba(141,220,151,.75)'; ctx.textAlign = 'center';
+  ctx.fillText('SCANNING · RF 감시 중 · 4 NODES', cx, F.y + F.h - 12);
+}
+
+function drawUnknown(t) {
+  const p = .5 + .5 * Math.sin(t / 140);
+  ctx.save(); ctx.beginPath(); ctx.rect(F.x, F.y, F.w, F.h); ctx.clip();
+  const g = ctx.createRadialGradient(F.x + F.w/2, F.y + F.h/2, F.w * .15, F.x + F.w/2, F.y + F.h/2, F.h * .7);
+  g.addColorStop(0, 'rgba(255,59,48,0)'); g.addColorStop(1, `rgba(255,59,48,${.18 + .17 * p})`);
+  ctx.fillStyle = g; ctx.fillRect(F.x, F.y, F.w, F.h);
+  ctx.font = '700 22px "Barlow Condensed", sans-serif'; ctx.fillStyle = `rgba(255,178,30,${.12 + .1 * p})`; ctx.textAlign = 'center';
+  for (let q = 0; q < 14; q++) { const qx = F.x + ((q * 0.618 * 997) % 1) * F.w, qy = F.y + ((q * 0.382 * 613 + t / 9000) % 1) * F.h; ctx.fillText('?', qx, qy); }
+  ctx.restore();
+  const cx = F.x + F.w / 2, cy = F.y + F.h * .44, bw = Math.min(F.w * .84, 380), bh = 118;
+  ctx.fillStyle = 'rgba(10,2,2,.82)'; ctx.fillRect(cx - bw/2, cy - bh/2, bw, bh);
+  ctx.strokeStyle = '#ff3b30'; ctx.lineWidth = 1.5; ctx.strokeRect(cx - bw/2 + .5, cy - bh/2 + .5, bw - 1, bh - 1);
+  ctx.fillStyle = '#ff3b30'; ctx.fillRect(cx - bw/2, cy - bh/2, bw, 4);
+  ctx.textAlign = 'center';
+  ctx.font = '600 11px "JetBrains Mono", monospace'; ctx.fillStyle = '#ff8f86'; ctx.fillText('DRONE DETECTED · RF 신호 탐지', cx, cy - 26);
+  ctx.font = '900 40px "Noto Sans KR", sans-serif'; ctx.fillStyle = `rgba(255,255,255,${.75 + .25 * p})`; ctx.fillText('방향 불명', cx, cy + 16);
+  ctx.font = '500 11px "JetBrains Mono", monospace'; ctx.fillStyle = '#ffb21e'; ctx.fillText('DIRECTION UNKNOWN · 위치 산출 불가', cx, cy + 40);
+}
+
+function drawTruth() {
+  if (!S.sim.pos) return;
+  const [x, y] = P(S.sim.pos.x, S.sim.pos.y);
+  ctx.strokeStyle = '#7cc6ff'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x - 8, y); ctx.lineTo(x + 8, y); ctx.moveTo(x, y - 8); ctx.lineTo(x, y + 8); ctx.stroke();
+  ctx.font = '500 9px "JetBrains Mono", monospace'; ctx.fillStyle = '#7cc6ff'; ctx.textAlign = 'left'; ctx.fillText('TRUTH (SIM)', x + 10, y - 6);
+}
+
+function frame() {
+  const t = now();
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, VW, VH); ctx.drawImage(stat, 0, 0, VW, VH);
+  const dt = S.lastFrameT ? Math.min(.1, (t - S.lastFrameT) / 1000) : 0; S.lastFrameT = t;
+  moveSoldiers(dt);
+  const live = S.detected, m2 = S.mode === 2 && live && S.hasProb && S.est;
+  S.heatA += ((m2 ? 1 : 0) - S.heatA) * .12;
+  if (S.heatA > .01 && S.hasProb) drawHeat();
+  if (m2) drawTactical(t);
+  drawSoldiers(t);
+  if (m2) drawDrone(t);
+  if (S.mode === 1 && live) drawUnknown(t);
+  if (S.debug) drawTruth();
+  // data timeout
+  if (S.detected && S.lastMsg && t - S.lastMsg > CFG.DATA_TIMEOUT_MS) lost('데이터 끊김 · 신호 소실');
+  alarm(t); compassTick();
+  requestAnimationFrame(frame);
+}
+
+/* ======================= UI PANELS ======================= */
+const cardsEl = $('#cards'), cardRefs = [];
+SQUAD.forEach(sq => {
+  const el = document.createElement('div'); el.className = 'card';
+  el.innerHTML = `<div class="c-top">
+      ${SOLDIER_SVG}
+      <div class="c-name"><b>${sq.full}</b><span class="tt">표적</span><span>${sq.role} · ${sq.call} · ${sq.pos} · ${sq.id}</span></div>
+      <div class="lvl">STBY</div></div>
+    <div class="c-grid">
+      <div><label>거리 RNG</label><div class="v d">—</div></div>
+      <div><label>방위 BRG</label><div class="v b">—</div></div>
+      <div><label>근접확률 ≤${CFG.ENGAGE_M}m</label><div class="v p">—</div></div>
+    </div>
+    <div class="pbar"><i></i></div>
+    <div class="c-act">대기 · 경계 유지</div>`;
+  cardsEl.appendChild(el);
+  cardRefs.push({ el, lvl: el.querySelector('.lvl'), d: el.querySelector('.d'), b: el.querySelector('.b'), p: el.querySelector('.p'), bar: el.querySelector('.pbar i'), act: el.querySelector('.c-act') });
+});
+const LVTXT = { CRIT: '위험 · 교전권', HIGH: '경계', MED: '주의', LOW: '안전', UNK: '위치 불명' };
+
+function updateUI() {
+  const t = now(), live = S.detected, m2 = S.mode === 2 && live && S.est;
+  // cards
+  cardRefs.forEach((c, i) => {
+    const r = S.risk[i];
+    let lvl = !live ? null : S.mode === 1 ? 'UNK' : r ? r.lvl : null;
+    c.el.style.setProperty('--lc', lvl ? LV[lvl] : 'var(--mute)');
+    c.el.classList.toggle('tgt', !!(m2 && i === S.target));
+    c.lvl.textContent = lvl ? LVTXT[lvl] : 'STBY';
+    if (m2 && r) {
+      c.d.innerHTML = `${Math.round(r.dm)}<small>m</small>`; c.b.innerHTML = `${fmt3(r.brg)}<small>°</small>`;
+      c.p.innerHTML = `${Math.round(r.pin * 100)}<small>%</small>`; c.bar.style.width = (r.pin * 100).toFixed(1) + '%';
+      const stt = S.st[i], cn = S.coverSel[i] ? S.coverSel[i].name : '';
+      c.act.innerHTML = stt === 'ENGAGE' ? `<b style="color:var(--crit)">▶ 사격 대응 중</b> · ${cardinal(r.brg)} ${Math.round(r.dm)} m`
+        : stt === 'COVER' ? `<b style="color:var(--ok)">■ ${cn} 엄폐 완료</b> · 드론 ${cardinal(r.brg)}`
+        : `<b style="color:var(--amb)">▶ ${cn} 이동 중</b> · 드론 ${cardinal(r.brg)}`;
+    } else if (live && S.mode === 1) {
+      c.d.innerHTML = '???'; c.b.innerHTML = '???'; c.p.innerHTML = '???'; c.bar.style.width = '0%';
+      c.act.innerHTML = '<b style="color:var(--unk)">방향 불명</b> · 엎드려 대기';
+    } else { c.d.textContent = '—'; c.b.textContent = '—'; c.p.textContent = '—'; c.bar.style.width = '0%'; c.act.textContent = '대기 · 경계 유지'; }
+  });
+  // threat
+  const th = $('#threat'); th.classList.toggle('hot', !!m2); th.classList.toggle('unk', live && S.mode === 1);
+  const adv = $('#advice'); adv.classList.toggle('unk', live && S.mode === 1);
+  if (m2) {
+    const tr = S.risk[S.target];
+    $('#thState').textContent = tr.lvl === 'CRIT' ? 'ENGAGE' : 'TRACKING';
+    $('#thName').textContent = 'HOSTILE FPV UAV';
+    $('#thSub').textContent = `표적 추정: ${SQUAD[S.target].full} (${SQUAD[S.target].call}) · 근접확률 ${Math.round(tr.pin * 100)}%`;
+    $('#thBrg').innerHTML = `${fmt3(S.brg)}<small>°</small>`; $('#thCard').textContent = cardinal(S.brg) + ' · 분대 중심 기준';
+    $('#thRng').innerHTML = `${Math.round(S.rangeU * CFG.UNIT_M)}<small>m</small>`;
+    $('#thCep').innerHTML = `±${Math.round(S.cepU * CFG.UNIT_M)}<small>m</small>`;
+    const h = S.trendHist; let rate = 0; if (h.length > 2) rate = (h[h.length - 1].d - h[0].d) / ((h[h.length - 1].t - h[0].t) / 1000 || 1);
+    $('#thTrend').innerHTML = rate < -2 ? '<span style="color:var(--crit)">접근 ▼</span>' : rate > 2 ? '<span style="color:var(--ok)">이탈 ▲</span>' : '정지 ■';
+    $('#thRate').textContent = `${Math.abs(rate).toFixed(0)} m/s · ${SQUAD[S.target].full} 기준`;
+    // grouped advice
+    const groups = {}; let fire = null;
+    S.risk.forEach((r, i) => { if (i === S.target && r.lvl === 'CRIT') fire = i; else (groups[S.coverSel[i].name] = groups[S.coverSel[i].name] || []).push(SQUAD[i].full); });
+    let html = '';
+    if (fire !== null) html += `<div><b class="fire">${SQUAD[fire].full}</b> → <b class="fire">사격 대응</b> · ${cardinal(S.risk[fire].brg)} ${Math.round(S.risk[fire].dm)} m</div>`;
+    Object.entries(groups).forEach(([k, v]) => html += `<div><b>${v.join('·')}</b> → <b class="go">${k}</b> 뒤로 엄폐</div>`);
+    const done = S.st.filter(x => x === 'COVER').length; if (done) html += `<div style="color:var(--mute)">엄폐 완료 ${done} / ${S.st.filter(x => x !== 'ENGAGE').length}</div>`;
+    $('#advText').innerHTML = html;
+    if (S.predPath && S.predPath.length) {
+      const last = S.predPath[S.predPath.length - 1], hb = bearing(S.est.x, S.est.y, last.x, last.y);
+      $('#predText').innerHTML = (S.predHit ? (S.predHit.t > 0 ? `<span class="hit">${SQUAD[S.predHit.i].full} 75 m 진입 예상 · +${S.predHit.t.toFixed(1)}초</span>` : `<span class="hit">${SQUAD[S.predHit.i].full} 교전권 내</span>`) : `<b>${cardinal(hb)} 진행</b> · ${last.t.toFixed(1)}초 내 진입 없음`)
+        + ` · <span style="color:var(--mute)">${S.predSrc === 'SIM' ? '데모 예측' : S.predSrc}</span>`;
+    } else $('#predText').textContent = '—';
+  } else if (live && S.mode === 1) {
+    $('#thState').textContent = 'DETECTED'; $('#thName').textContent = 'UNKNOWN UAV'; $('#thSub').textContent = '드론 신호 감지 · 위치 산출 불가';
+    ['#thBrg', '#thRng', '#thCep'].forEach(s => $(s).textContent = '???'); $('#thCard').textContent = '방향 불명';
+    $('#thTrend').textContent = '???'; $('#thRate').textContent = '판단 불가';
+    $('#predText').textContent = '예측 불가';
+    $('#advText').innerHTML = '<div><b style="color:var(--unk)">방향 불명</b> — 숨는 것 외 조치 불가</div><div style="color:var(--mute)">어느 쪽으로? 누구에게? 알 수 없음</div>';
+  } else {
+    $('#thState').textContent = 'STANDBY'; $('#thName').textContent = 'NO CONTACT'; $('#thSub').textContent = 'RF 감시 중 · 4개 노드 대기';
+    ['#thBrg', '#thRng', '#thCep', '#thTrend'].forEach(s => $(s).textContent = '---'); $('#thCard').textContent = '분대 중심 기준'; $('#thRate').textContent = '표적 병사 기준';
+    $('#advText').innerHTML = '<div style="color:var(--mute)">특이사항 없음 · 경계 유지</div>'; $('#predText').textContent = '—';
+  }
+  // compass readout
+  const nd = $('#cmpNeedle'), q = $('#cmpQ'), ring = $('#cmpRing');
+  if (m2) {
+    nd.style.display = ''; q.style.display = 'none'; ring.classList.remove('spin');
+    const half = clamp(Math.atan2(S.cepU, Math.max(S.rangeU, .05)) * 180 / Math.PI, 4, 75);
+    $('#cmpWedge').setAttribute('d', wedge(half));
+    $('#cmpDeg').innerHTML = `${fmt3(S.brg)}<small>°</small>`; $('#cmpCard').textContent = cardinal(S.brg);
+    $('#cmpErr').textContent = `방위 오차 ± ${Math.round(half)}° · 거리 ${Math.round(S.rangeU * CFG.UNIT_M)} m`;
+  } else if (live && S.mode === 1) {
+    nd.style.display = 'none'; q.style.display = ''; ring.classList.add('spin');
+    $('#cmpDeg').innerHTML = '???'; $('#cmpCard').textContent = '방향 불명'; $('#cmpErr').textContent = '단일 탐지기 · 방위 정보 없음';
+  } else {
+    nd.style.display = 'none'; q.style.display = 'none'; ring.classList.remove('spin');
+    $('#cmpDeg').innerHTML = '---<small>°</small>'; $('#cmpCard').textContent = '대기'; $('#cmpErr').textContent = '방위 오차 ± —';
+  }
+  const age = S.lastMsg ? t - S.lastMsg : Infinity, fresh = age < CFG.DATA_TIMEOUT_MS;
+  const link = $('#link'), lt = link.querySelector('span');
+  link.classList.remove('live', 'sim', 'stale');
+  if (fresh && S.src === 'sim') { link.classList.add('sim'); lt.textContent = S.sim.mode === 'manual' ? 'SIM · MANUAL' : 'SIM · AUTO'; }
+  else if (fresh) { link.classList.add('live'); lt.textContent = 'LIVE · ' + S.src.toUpperCase(); }
+  else if (S.conn) { link.classList.add('stale'); lt.textContent = 'LINK · 대기'; }
+  else { lt.textContent = 'NO DATA'; }
+  $('#sqMeta').textContent = `${S.rssiT.filter(x => t - x < CFG.DATA_TIMEOUT_MS).length} / 4 NODES`;
+  $('#clock').firstChild.nodeValue = hms();
+}
+
+function wedge(h) {
+  const r = 96, a = h * Math.PI / 180, p = ang => `${(r * Math.sin(ang)).toFixed(2)} ${(-r * Math.cos(ang)).toFixed(2)}`;
+  return `M0 0 L${p(-a)} A${r} ${r} 0 0 1 ${p(a)} Z`;
+}
+function compassTick() {
+  const target = (S.mode === 2 && S.detected && S.est) ? S.brg : S.needle;
+  const d = ((target - S.needle + 540) % 360) - 180; S.needle += d * .14;
+  $('#cmpNeedle').setAttribute('transform', `rotate(${S.needle.toFixed(2)})`);
+}
+(function buildCompass() {
+  const g = $('#cmpRing'); let h = '<circle r="104" fill="rgba(6,9,7,.8)" stroke="#2a382f"/><circle r="72" fill="none" stroke="#1c2620" stroke-dasharray="2 4"/>';
+  for (let d = 0; d < 360; d += 5) {
+    const a = d * Math.PI / 180, r1 = 104, r2 = d % 30 === 0 ? 92 : d % 10 === 0 ? 97 : 100;
+    h += `<line x1="${(r1 * Math.sin(a)).toFixed(1)}" y1="${(-r1 * Math.cos(a)).toFixed(1)}" x2="${(r2 * Math.sin(a)).toFixed(1)}" y2="${(-r2 * Math.cos(a)).toFixed(1)}" stroke="${d % 30 === 0 ? '#8b988f' : '#3a4a40'}" stroke-width="${d % 30 === 0 ? 1.4 : 1}"/>`;
+    if (d % 30 === 0 && d % 90 !== 0) h += `<text x="${(82 * Math.sin(a)).toFixed(1)}" y="${(-82 * Math.cos(a) + 3.5).toFixed(1)}" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#5a675e">${String(d / 10).padStart(2, '0')}</text>`;
+  }
+  [['N', 0, '#ff6a5c'], ['E', 90, '#e3e9e0'], ['S', 180, '#e3e9e0'], ['W', 270, '#e3e9e0']].forEach(([c, d, f]) => {
+    const a = d * Math.PI / 180; h += `<text x="${(78 * Math.sin(a)).toFixed(1)}" y="${(-78 * Math.cos(a) + 6).toFixed(1)}" text-anchor="middle" font-family="Barlow Condensed" font-weight="700" font-size="18" fill="${f}">${c}</text>`;
+  });
+  g.innerHTML = h;
+})();
+
+/* ======================= LOG ======================= */
+let logCount = 0;
+function log(msg, cls) {
+  const li = document.createElement('li'); if (cls) li.className = cls;
+  const tm = hms();
+  li.innerHTML = `<time>${tm}</time><span></span>`; li.querySelector('span').textContent = msg;
+  const ol = $('#log'); ol.insertBefore(li, ol.firstChild); while (ol.children.length > 60) ol.removeChild(ol.lastChild);
+  $('#logN').textContent = String(++logCount).padStart(3, '0');
+}
+
+/* ======================= AUDIO ======================= */
+function ensureAudio() {
+  try { if (!S.ac) S.ac = new (window.AudioContext || window.webkitAudioContext)(); if (S.ac.state === 'suspended') S.ac.resume(); } catch (e) {}
+  setTimeout(updateAudioChip, 60);
+}
+function updateAudioChip() {
+  const c = $('#audioChip'), on = S.ac && S.ac.state === 'running' && !S.muted;
+  c.textContent = on ? 'AUDIO ON' : S.muted ? 'MUTED' : 'AUDIO OFF'; c.className = 'chip ' + (on ? 'on' : 'off');
+  if (on) $('#hint').style.opacity = 0;
+}
+function tone(f, dur, vol, type, at) {
+  const ac = S.ac; if (!ac || S.muted || ac.state !== 'running') return;
+  const t = at || ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type || 'square'; o.frequency.setValueAtTime(f, t);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .006); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + .03);
+}
+function siren() {
+  const ac = S.ac; if (!ac || S.muted || ac.state !== 'running') return;
+  for (let k = 0; k < 3; k++) {
+    const t = ac.currentTime + k * .6, o = ac.createOscillator(), g = ac.createGain(), lp = ac.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(520, t); o.frequency.exponentialRampToValueAtTime(1350, t + .5);
+    lp.type = 'lowpass'; lp.frequency.value = 2400;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.16, t + .04); g.gain.linearRampToValueAtTime(0, t + .55);
+    o.connect(lp).connect(g).connect(ac.destination); o.start(t); o.stop(t + .6);
+  }
+}
+function alarm(t) {
+  if (!S.detected || t < S.nextBeep || t < S.alertUntil) return;
+  if (S.mode === 1) { tone(2100, .07, .14, 'square'); S.nextBeep = t + 280; return; }
+  const r = S.risk[S.target]; const lvl = r ? r.lvl : 'LOW';
+  const iv = { CRIT: 190, HIGH: 380, MED: 650, LOW: 1000 }[lvl];
+  tone(lvl === 'CRIT' ? 1400 : 1050, .085, .13, 'square'); if (lvl === 'CRIT') tone(1750, .06, .1, 'square', S.ac && S.ac.currentTime + .09);
+  S.nextBeep = t + iv;
+}
+
+/* ======================= ALERT ======================= */
+function showAlert() {
+  const a = $('#alert');
+  $('#alertSub').textContent = `제4분대 · ${hms()} · 적 FPV 접근`;
+  a.classList.add('show'); siren(); S.alertUntil = now() + 2400;
+  clearTimeout(showAlert._t); showAlert._t = setTimeout(() => a.classList.remove('show'), 2400);
+}
+
+/* ======================= SIMULATOR ======================= */
+const gauss = () => { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+const simLen = (() => { const L = [0]; for (let q = 1; q < SIM_PATH.length; q++) L.push(L[q - 1] + Math.hypot(SIM_PATH[q][0] - SIM_PATH[q - 1][0], SIM_PATH[q][1] - SIM_PATH[q - 1][1])); return L; })();
+function simAt(d) {
+  if (d >= simLen[simLen.length - 1]) return null;
+  let q = 1; while (simLen[q] < d) q++;
+  const f = (d - simLen[q - 1]) / (simLen[q] - simLen[q - 1]), a = SIM_PATH[q - 1], b = SIM_PATH[q];
+  return { x: a[0] + (b[0] - a[0]) * f, y: a[1] + (b[1] - a[1]) * f };
+}
+function simStart() { S.sim.mode = 'auto'; S.sim.t = 0; resetTrack(); log(`시뮬레이션 시작 · ${S.mode === 1 ? '탐지기 모드' : '분대 레이더 모드'}`, 'warn'); }
+function simTick() {
+  const sm = S.sim; if (sm.mode === 'off') return;
+  if (sm.mode === 'auto') { sm.t += .1; sm.pos = simAt(sm.t * CFG.SIM_SPEED); if (!sm.pos) { sm.mode = 'off'; sm.pos = null; log('시뮬레이션 종료 · 표적 이탈', 'ok'); ingest({ rssi: [-99, -99, -99, -99], detected: false }, 'sim'); return; } }
+  if (!sm.pos) return;
+  const R = CFG.RSSI;
+  const r = SQUAD.map(s => { const d = Math.max(Math.hypot(s.x - sm.pos.x, s.y - sm.pos.y) * R.PHYS_UNIT_M, .05); return +(R.P0 - 10 * R.N * Math.log10(d) + gauss() * CFG.SIM_NOISE_DB).toFixed(1); });
+  ingest({ rssi: r, detected: true }, 'sim');
+}
+setInterval(simTick, 100);
+
+function toField(e) { const b = cv.getBoundingClientRect(); return { x: clamp((e.clientX - b.left - F.x) / F.s, -.2, W + .2), y: clamp((e.clientY - b.top - F.y) / F.s, -.2, H + .2) }; }
+let dragging = false;
+cv.addEventListener('pointerdown', e => {
+  ensureAudio();
+  if (S.src && S.src !== 'sim' && now() - S.lastMsg < CFG.DATA_TIMEOUT_MS) return;
+  if (S.sim.mode !== 'manual') { S.sim.mode = 'manual'; log('수동 시뮬레이션 · 드론 배치', 'warn'); }
+  dragging = true; cv.setPointerCapture(e.pointerId); S.sim.pos = toField(e);
+});
+cv.addEventListener('pointermove', e => { if (dragging) S.sim.pos = toField(e); });
+cv.addEventListener('pointerup', () => { dragging = false; });
+
+/* ======================= CONNECTIONS ======================= */
+function disconnect() {
+  const c = S.conn; S.conn = null; S.connUrl = '';
+  if (!c) return;
+  if (c.ws) { c.ws.onclose = null; try { c.ws.close(); } catch (e) {} }
+  if (c.timer) clearInterval(c.timer);
+  if (c.port) { c.stop = true; try { c.reader && c.reader.cancel(); } catch (e) {} }
+  log('연결 해제', 'warn');
+}
+function connectWS(url) {
+  disconnect(); const c = { kind: 'ws' }; S.conn = c; S.connUrl = url; S.connKind = 'ws';
+  const open = () => {
+    if (S.conn !== c) return;
+    try { c.ws = new WebSocket(url); } catch (e) { log('WebSocket 주소 오류', 'crit'); return; }
+    c.ws.onopen = () => log('WebSocket 연결됨 · ' + url, 'ok');
+    c.ws.onmessage = ev => handleText(ev.data, 'ws');
+    c.ws.onclose = () => { if (S.conn === c) { setTimeout(open, 1500); } };
+  };
+  open(); store(url);
+}
+function connectPoll(url, ms) {
+  disconnect(); const c = { kind: 'http' }; S.conn = c; S.connUrl = url; S.connKind = 'http';
+  let busy = false;
+  c.timer = setInterval(() => { if (busy) return; busy = true;
+    fetch(url, { cache: 'no-store' }).then(r => r.text()).then(t => handleText(t, 'http')).catch(() => {}).finally(() => busy = false); }, ms || 150);
+  log('HTTP 폴링 시작 · ' + url, 'ok'); store(url);
+}
+async function connectSerial() {
+  if (!('serial' in navigator)) { log('이 브라우저는 USB 시리얼 미지원 (크롬 사용)', 'crit'); return; }
+  try {
+    const port = await navigator.serial.requestPort(); await port.open({ baudRate: CFG.BAUD });
+    disconnect(); const c = { kind: 'serial', port }; S.conn = c; S.connUrl = 'USB SERIAL'; log('USB 시리얼 연결됨', 'ok');
+    const dec = new TextDecoderStream(); port.readable.pipeTo(dec.writable).catch(() => {});
+    c.reader = dec.readable.getReader(); let buf = '';
+    while (!c.stop) { const { value, done } = await c.reader.read(); if (done) break; buf += value; let k;
+      while ((k = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, k); buf = buf.slice(k + 1); handleText(line, 'serial'); } }
+  } catch (e) { log('시리얼 연결 취소/실패', 'warn'); }
+}
+function connectUrl(u) { u = (u || '').trim(); if (!u) return; if (/^wss?:\/\//i.test(u)) connectWS(u); else if (/^https?:\/\//i.test(u)) connectPoll(u, 150); else log('주소는 ws:// 또는 http:// 로 시작', 'crit'); }
+function store(u) { try { localStorage.setItem('squadRadar.url', u); } catch (e) {} }
+
+/* ======================= MODES & CONTROLS ======================= */
+function setMode(m) {
+  if (S.mode === m) return; S.mode = m;
+  document.querySelectorAll('.modes button').forEach(b => b.classList.toggle('on', +b.dataset.mode === m));
+  log(m === 1 ? '모드 전환 → 탐지기 모드 (단일 탐지 · 방향 없음)' : '모드 전환 → 분대 레이더 모드 (4노드 융합)', 'warn');
+  S.prevTarget = -1; S.critLogged = -1;
+}
+function resetTrack() { S.track = []; S.trendHist = []; S.pred = null; S.hasProb = false; S.est = null; S.risk = SQUAD.map(() => null); S.target = -1; S.prevTarget = -1; S.critLogged = -1; S.episodeAlerted = false; S.detected = false; S.extPred = null; S.predPath = null; S.predHit = null; S.sp.forEach((p, i) => { p.x = SQUAD[i].x; p.y = SQUAD[i].y; }); S.coverSel = SQUAD.map(() => null); S.st = SQUAD.map(() => 'HOLD'); }
+document.querySelectorAll('.modes button').forEach(b => b.addEventListener('click', () => { ensureAudio(); setMode(+b.dataset.mode); }));
+$('#audioChip').addEventListener('click', () => { ensureAudio(); if (S.ac && S.ac.state === 'running') { S.muted = !S.muted; updateAudioChip(); } });
+$('#link').addEventListener('click', () => openModal());
+function openModal() { $('#modal').classList.add('show'); try { $('#urlIn').value = S.connUrl || localStorage.getItem('squadRadar.url') || ''; } catch (e) {} }
+function closeModal() { $('#modal').classList.remove('show'); }
+$('#btnConn').onclick = () => { connectUrl($('#urlIn').value); closeModal(); };
+$('#btnSerial').onclick = () => { connectSerial(); closeModal(); };
+$('#btnSim').onclick = () => { ensureAudio(); simStart(); closeModal(); };
+$('#btnDisc').onclick = () => { disconnect(); closeModal(); };
+$('#btnClose').onclick = closeModal;
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+document.addEventListener('pointerdown', ensureAudio, { once: false });
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') { if (e.key === 'Enter') { connectUrl(e.target.value); closeModal(); } if (e.key === 'Escape') closeModal(); return; }
+  ensureAudio();
+  const k = e.key.toLowerCase();
+  if (k === '1') setMode(1);
+  else if (k === '2') setMode(2);
+  else if (k === ' ') { e.preventDefault(); simStart(); }
+  else if (k === 's') { if (S.sim.mode === 'off') simStart(); else { S.sim.mode = 'off'; S.sim.pos = null; log('시뮬레이션 중지', 'warn'); } }
+  else if (k === 'a') showAlert();
+  else if (k === 'r') { S.sim.mode = 'off'; S.sim.pos = null; resetTrack(); log('리셋 · 항적 초기화', 'ok'); }
+  else if (k === 'm') { S.muted = !S.muted; updateAudioChip(); }
+  else if (k === 'd') S.debug = !S.debug;
+  else if (k === 'f') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}); }
+  else if (k === 'c' || k === 'h') openModal();
+  else if (k === 'escape') closeModal();
+});
+
+/* ======================= BOOT ======================= */
+window.addEventListener('resize', resize);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(resize);
+resize();
+log('시스템 기동 · 제4분대 노드 4기 등록', 'ok');
+log('전장: DMZ 산악 · 서측/동측 수풀 엄폐 · 중앙 개활지');
+const qs = new URLSearchParams(location.search);
+if (qs.get('ws')) connectWS(qs.get('ws'));
+else if (qs.get('poll')) connectPoll(qs.get('poll'), +qs.get('ms') || 150);
+if (qs.get('mode') === '1') setMode(1);
+if (qs.get('sim') === '1') simStart();
+setInterval(updateUI, 100); updateUI();
+requestAnimationFrame(frame);
+window.SquadRadar = { ingest, handleText, CFG, setMode, simStart, showAlert };
+})();
+</script>
+</body>
+</html>

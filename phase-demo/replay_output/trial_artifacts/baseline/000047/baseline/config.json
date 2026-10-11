@@ -1,0 +1,49 @@
+{
+  "random_seed": 89,
+  "estimator": {
+    "area_width_m": 100.0,
+    "area_height_m": 100.0,
+    "grid_resolution_m": 2.0,
+    "emitter_id": "test_emitter",
+    "evaluation_timestamp": 100.0,
+    "maximum_observation_age": 5.0,
+    "placeholder_width_m": 10.0
+  },
+  "receivers": [
+    {
+      "receiver_id": "r1",
+      "x": 10,
+      "y": 10,
+      "enabled": true
+    },
+    {
+      "receiver_id": "r2",
+      "x": 90,
+      "y": 10,
+      "enabled": true
+    },
+    {
+      "receiver_id": "r3",
+      "x": 90,
+      "y": 90,
+      "enabled": true
+    },
+    {
+      "receiver_id": "r4",
+      "x": 10,
+      "y": 90,
+      "enabled": true
+    }
+  ],
+  "test_emitter_x": 75.0,
+  "test_emitter_y": 70.0,
+  "observation_noise_level": 0.1,
+  "observation_bias": 0.0,
+  "observation_dropout_probability": 0.0,
+  "measurement_timestamp": 100.0,
+  "synthetic_value": 1.0,
+  "thresholds": {
+    "large_error_threshold_m": 20.0,
+    "small_uncertainty_area_threshold_m2": 1600.0
+  }
+}

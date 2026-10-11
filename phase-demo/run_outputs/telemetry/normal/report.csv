@@ -1,0 +1,5 @@
+sensor_id,state,latest_measurement,message_rate_hz,received_unique,missing_messages,missing_detected_total,packet_loss,latency_mean_seconds,latency_latest_seconds,duplicate_errors,delayed_errors,out_of_order_errors,invalid_errors,error_count
+sensor-1,HEALTHY,-1.6828697716158048,1,61,0,0,0.0,0.0,0.0,0,0,0,0,0
+sensor-2,HEALTHY,9.613556808983494,1,61,0,0,0.0,0.0,0.0,0,0,0,0,0
+sensor-3,HEALTHY,20.020244026852616,1,61,0,0,0.0,0.0,0.0,0,0,0,0,0
+sensor-4,HEALTHY,31.21175037083034,1,61,0,0,0.0,0.0,0.0,0,0,0,0,0

@@ -1,0 +1,30 @@
+{
+  "status": "INSUFFICIENT_DATA",
+  "representative_position": null,
+  "ground_truth": [
+    75.0,
+    70.0
+  ],
+  "position_error_m": null,
+  "ground_truth_inside_50_region": null,
+  "ground_truth_inside_90_region": null,
+  "region_50_area_m2": null,
+  "region_90_area_m2": null,
+  "region_50_actual_mass": null,
+  "region_90_actual_mass": null,
+  "processing_time_ms": 0.019081000118603697,
+  "active_observation_count": 0,
+  "overconfident_failure": null,
+  "message": "Placeholder contract requires two distinct valid receivers",
+  "diagnostics": {
+    "ignored_emitter": 0,
+    "disabled": 0,
+    "stale": 0,
+    "bad_quality": 0
+  },
+  "scenario": "zero",
+  "random_seed": 42,
+  "data_source": "SYNTHETIC",
+  "estimator": "PLACEHOLDER / NOT VALIDATED",
+  "timing_scope": "estimator call only; excludes plotting and I/O"
+}

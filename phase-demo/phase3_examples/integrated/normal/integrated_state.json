@@ -1,0 +1,103 @@
+{
+  "scenario": "normal",
+  "logical_time": 30.75,
+  "duration": 30.75,
+  "map_frame": {
+    "time": 30.0,
+    "position": [
+      80.0,
+      78.0
+    ],
+    "uncertainty_radius": 5.0,
+    "confidence_label": "HIGH",
+    "track_status": "TRACKING"
+  },
+  "map_frame_index": 30,
+  "map_held_at_end": true,
+  "telemetry": {
+    "time": 30.75,
+    "rejected_unknown": 0,
+    "sensors": [
+      {
+        "sensor_id": "sensor-1",
+        "state": "HEALTHY",
+        "latest_measurement": -1.6828697716158048,
+        "message_rate_hz": 1,
+        "received_unique": 61,
+        "missing_messages": 0,
+        "missing_detected_total": 0,
+        "packet_loss": 0.0,
+        "latency_mean_seconds": 0.0,
+        "latency_latest_seconds": 0.0,
+        "duplicate_errors": 0,
+        "delayed_errors": 0,
+        "out_of_order_errors": 0,
+        "invalid_errors": 0,
+        "error_count": 0,
+        "last_message_timestamp": 30.0,
+        "last_sequence_number": 60,
+        "last_arrival_time": 30.0
+      },
+      {
+        "sensor_id": "sensor-2",
+        "state": "HEALTHY",
+        "latest_measurement": 9.613556808983494,
+        "message_rate_hz": 1,
+        "received_unique": 61,
+        "missing_messages": 0,
+        "missing_detected_total": 0,
+        "packet_loss": 0.0,
+        "latency_mean_seconds": 0.0,
+        "latency_latest_seconds": 0.0,
+        "duplicate_errors": 0,
+        "delayed_errors": 0,
+        "out_of_order_errors": 0,
+        "invalid_errors": 0,
+        "error_count": 0,
+        "last_message_timestamp": 30.0,
+        "last_sequence_number": 60,
+        "last_arrival_time": 30.0
+      },
+      {
+        "sensor_id": "sensor-3",
+        "state": "HEALTHY",
+        "latest_measurement": 20.020244026852616,
+        "message_rate_hz": 1,
+        "received_unique": 61,
+        "missing_messages": 0,
+        "missing_detected_total": 0,
+        "packet_loss": 0.0,
+        "latency_mean_seconds": 0.0,
+        "latency_latest_seconds": 0.0,
+        "duplicate_errors": 0,
+        "delayed_errors": 0,
+        "out_of_order_errors": 0,
+        "invalid_errors": 0,
+        "error_count": 0,
+        "last_message_timestamp": 30.0,
+        "last_sequence_number": 60,
+        "last_arrival_time": 30.0
+      },
+      {
+        "sensor_id": "sensor-4",
+        "state": "HEALTHY",
+        "latest_measurement": 31.21175037083034,
+        "message_rate_hz": 1,
+        "received_unique": 61,
+        "missing_messages": 0,
+        "missing_detected_total": 0,
+        "packet_loss": 0.0,
+        "latency_mean_seconds": 0.0,
+        "latency_latest_seconds": 0.0,
+        "duplicate_errors": 0,
+        "delayed_errors": 0,
+        "out_of_order_errors": 0,
+        "invalid_errors": 0,
+        "error_count": 0,
+        "last_message_timestamp": 30.0,
+        "last_sequence_number": 60,
+        "last_arrival_time": 30.0
+      }
+    ]
+  }
+}

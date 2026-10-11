@@ -1,0 +1,321 @@
+{
+  "schema_version": 1,
+  "data_source": "SIMULATED / PREDEFINED DATA",
+  "scenario_name": "UNCERTAIN_TRACK",
+  "duration_seconds": 30,
+  "area_width_m": 100,
+  "area_height_m": 100,
+  "grid_resolution_m": 2,
+  "frames": [
+    {
+      "time": 0,
+      "position": [
+        22,
+        32
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 1,
+      "position": [
+        24,
+        34
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 2,
+      "position": [
+        26,
+        36
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 3,
+      "position": [
+        28,
+        39
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 4,
+      "position": [
+        30,
+        42
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 5,
+      "position": [
+        32,
+        45
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 6,
+      "position": [
+        34,
+        48
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 7,
+      "position": [
+        36,
+        50
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 8,
+      "position": [
+        38,
+        52
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 9,
+      "position": [
+        40,
+        54
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 10,
+      "position": [
+        42,
+        56
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 11,
+      "position": [
+        44,
+        57
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 12,
+      "position": [
+        46,
+        58
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 13,
+      "position": [
+        48,
+        59
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 14,
+      "position": [
+        50,
+        60
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 15,
+      "position": [
+        52,
+        60
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 16,
+      "position": [
+        54,
+        59
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 17,
+      "position": [
+        56,
+        58
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 18,
+      "position": [
+        58,
+        57
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 19,
+      "position": [
+        60,
+        55
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 20,
+      "position": [
+        62,
+        53
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 21,
+      "position": [
+        64,
+        51
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 22,
+      "position": [
+        66,
+        49
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 23,
+      "position": [
+        68,
+        47
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 24,
+      "position": [
+        70,
+        45
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 25,
+      "position": [
+        72,
+        43
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 26,
+      "position": [
+        74,
+        41
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 27,
+      "position": [
+        76,
+        39
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 28,
+      "position": [
+        78,
+        37
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 29,
+      "position": [
+        80,
+        35
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    },
+    {
+      "time": 30,
+      "position": [
+        82,
+        33
+      ],
+      "uncertainty_radius": 28,
+      "confidence_label": "LOW",
+      "track_status": "TRACKING"
+    }
+  ]
+}

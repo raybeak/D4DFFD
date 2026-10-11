@@ -1,0 +1,82 @@
+[
+  {
+    "scenario": "baseline",
+    "metric": "position_error_median_m",
+    "unit": "m",
+    "baseline": 33.421549934136806,
+    "candidate": 33.421549934136806,
+    "candidate_minus_baseline": 0.0,
+    "comparison_status": "COMPARABLE_VALUES",
+    "interpretation": "Descriptive only; setup equivalence and statistical significance not established"
+  },
+  {
+    "scenario": "baseline",
+    "metric": "position_error_p90_m",
+    "unit": "m",
+    "baseline": 33.421549934136806,
+    "candidate": 33.421549934136806,
+    "candidate_minus_baseline": 0.0,
+    "comparison_status": "COMPARABLE_VALUES",
+    "interpretation": "Descriptive only; setup equivalence and statistical significance not established"
+  },
+  {
+    "scenario": "baseline",
+    "metric": "coverage_50_pct",
+    "unit": "percentage_points",
+    "baseline": 0.0,
+    "candidate": 0.0,
+    "candidate_minus_baseline": 0.0,
+    "comparison_status": "COMPARABLE_VALUES",
+    "interpretation": "Descriptive only; setup equivalence and statistical significance not established"
+  },
+  {
+    "scenario": "baseline",
+    "metric": "coverage_90_pct",
+    "unit": "percentage_points",
+    "baseline": 0.0,
+    "candidate": 0.0,
+    "candidate_minus_baseline": 0.0,
+    "comparison_status": "COMPARABLE_VALUES",
+    "interpretation": "Descriptive only; setup equivalence and statistical significance not established"
+  },
+  {
+    "scenario": "baseline",
+    "metric": "region_50_area_median_m2",
+    "unit": "m2",
+    "baseline": 448.0,
+    "candidate": 448.0,
+    "candidate_minus_baseline": 0.0,
+    "comparison_status": "COMPARABLE_VALUES",
+    "interpretation": "Descriptive only; setup equivalence and statistical significance not established"
+  },
+  {
+    "scenario": "baseline",
+    "metric": "region_90_area_median_m2",
+    "unit": "m2",
+    "baseline": 1472.0,
+    "candidate": 1472.0,
+    "candidate_minus_baseline": 0.0,
+    "comparison_status": "COMPARABLE_VALUES",
+    "interpretation": "Descriptive only; setup equivalence and statistical significance not established"
+  },
+  {
+    "scenario": "baseline",
+    "metric": "processing_time_median_ms",
+    "unit": "ms",
+    "baseline": 0.2504980002413504,
+    "candidate": 0.22073999980420922,
+    "candidate_minus_baseline": -0.029758000437141163,
+    "comparison_status": "COMPARABLE_VALUES",
+    "interpretation": "Descriptive only; setup equivalence and statistical significance not established"
+  },
+  {
+    "scenario": "baseline",
+    "metric": "failure_rate_pct",
+    "unit": "percentage_points",
+    "baseline": 0.0,
+    "candidate": 0.0,
+    "candidate_minus_baseline": 0.0,
+    "comparison_status": "COMPARABLE_VALUES",
+    "interpretation": "Descriptive only; setup equivalence and statistical significance not established"
+  }
+]

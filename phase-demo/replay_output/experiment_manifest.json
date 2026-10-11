@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "timestamp_utc": "2026-10-10T04:44:41.268599+00:00",
+  "software_version": "1.5.0",
+  "source_sha256": {
+    "config.py": "23aab2f3575afa8ab36bb83d6cecc4cb2162fcb6a8c5a7c1d1ee15c333617731",
+    "evaluation/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evaluation/aggregation.py": "0bd5734044c088883997598aa0dbac5e05b29ebd23b8d0299189b75e5716f2cc",
+    "evaluation/comparison.py": "ce7e3822732f17f2c18258352e14e492a8a3dc44de29fd03f01469ce4f7ecd04",
+    "evaluation/metrics.py": "c95b669ac8e8fda12e82cffc5c50088cbc5c9abd7033ad7796e6a7a5fefb79ac",
+    "experiments/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "experiments/baseline.py": "eebee454a4820a088a5ac0b58ed214b68d9cb1e4ffee055d1dedcb5f96be22f5",
+    "experiments/validation_harness.py": "d81b8bd862e03636fb6c3f7d9bf14716a9bb0a204bc9a5d7fad85299bbd401a7",
+    "localization/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "localization/interface.py": "d946288cb8393d8b5051dbfa9ef9b1b132e2feb706f6ed7592c73578becf2f65",
+    "localization/placeholder.py": "f08cbd64318d01ad98c9e2e3675fe333825c8a0a252ec5ce2c90e25054cdbb3b",
+    "main.py": "74bf2d79903953714f90a53c3510c9bac003d28caeff440dbc47087d48d8cdfa",
+    "models/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "models/emitter.py": "d5905b16d1d55dbb9a43cb0073d41eb439a7a5a8e4aae21615a41729d9d12233",
+    "models/ground_truth.py": "a67f5398d7677802f43d948ce70fd1a83ab42a008cffd468946faf4b47455987",
+    "models/observation.py": "8a506acfb946b2d726dab69890f4104ebbc02e5e22d3482dd2ec3fdae59c14cc",
+    "models/receiver.py": "b90f51abbfaab974cd68ccfe3f029eab4639ecb16213705477baedc62d247499",
+    "simulation/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "simulation/synthetic.py": "5de13c9769434471a226010d39b2a2038f04ec673d8acd380b67291ae4208504",
+    "tests/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tests/test_data_separation.py": "d9f89a1032f74c81ef7a91b03f7059a03ccdf00972beeb9689774708df21e1c8",
+    "tests/test_failures.py": "5ab477f2cc04c34a5006555d360dddd3297ee75064cd31c268c5ba60d07cbf27",
+    "tests/test_metrics.py": "27be6e40d6248f9933cf7904a252db3156115159a767014b6b4c93b4dd39398e",
+    "tests/test_reproducibility.py": "1cd6b7bde432dca380262001f8c93fc4f566fb1ea1c2e8b1219f0ca6ce6eee74",
+    "tests/test_validation_harness.py": "0e4508ae5b06e146a70f10e7e344a6e682756983b3bcd344afb1772c2273b17c",
+    "visualization/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "visualization/plot.py": "815ee505c2fafd435d7f6a1c7be3fc556d57ad67d3a55fe77ff6a4504fd9305b",
+    "visualization/validation_plots.py": "da591a86ac89f57e18e78c38a5dfadf12c1f77d7fac1f471bc58162de20d2dc5"
+  },
+  "scenarios": [
+    "baseline"
+  ],
+  "number_of_trials_per_scenario": 100,
+  "total_trial_count": 100,
+  "seed_start": 42,
+  "seed_end_inclusive": 141,
+  "configuration": {
+    "random_seed": 42,
+    "estimator": {
+      "area_width_m": 100.0,
+      "area_height_m": 100.0,
+      "grid_resolution_m": 2.0,
+      "emitter_id": "test_emitter",
+      "evaluation_timestamp": 100.0,
+      "maximum_observation_age": 5.0,
+      "placeholder_width_m": 10.0
+    },
+    "receivers": [
+      {
+        "receiver_id": "r1",
+        "x": 10,
+        "y": 10,
+        "enabled": true
+      },
+      {
+        "receiver_id": "r2",
+        "x": 90,
+        "y": 10,
+        "enabled": true
+      },
+      {
+        "receiver_id": "r3",
+        "x": 90,
+        "y": 90,
+        "enabled": true
+      },
+      {
+        "receiver_id": "r4",
+        "x": 10,
+        "y": 90,
+        "enabled": true
+      }
+    ],
+    "test_emitter_x": 75.0,
+    "test_emitter_y": 70.0,
+    "observation_noise_level": 0.1,
+    "observation_bias": 0.0,
+    "observation_dropout_probability": 0.0,
+    "measurement_timestamp": 100.0,
+    "synthetic_value": 1.0,
+    "thresholds": {
+      "large_error_threshold_m": 20.0,
+      "small_uncertainty_area_threshold_m2": 1600.0
+    }
+  },
+  "effective_scenario_configurations": {
+    "baseline": {
+      "random_seed": 42,
+      "estimator": {
+        "area_width_m": 100.0,
+        "area_height_m": 100.0,
+        "grid_resolution_m": 2.0,
+        "emitter_id": "test_emitter",
+        "evaluation_timestamp": 100.0,
+        "maximum_observation_age": 5.0,
+        "placeholder_width_m": 10.0
+      },
+      "receivers": [
+        {
+          "receiver_id": "r1",
+          "x": 10,
+          "y": 10,
+          "enabled": true
+        },
+        {
+          "receiver_id": "r2",
+          "x": 90,
+          "y": 10,
+          "enabled": true
+        },
+        {
+          "receiver_id": "r3",
+          "x": 90,
+          "y": 90,
+          "enabled": true
+        },
+        {
+          "receiver_id": "r4",
+          "x": 10,
+          "y": 90,
+          "enabled": true
+        }
+      ],
+      "test_emitter_x": 75.0,
+      "test_emitter_y": 70.0,
+      "observation_noise_level": 0.1,
+      "observation_bias": 0.0,
+      "observation_dropout_probability": 0.0,
+      "measurement_timestamp": 100.0,
+      "synthetic_value": 1.0,
+      "thresholds": {
+        "large_error_threshold_m": 20.0,
+        "small_uncertainty_area_threshold_m2": 1600.0
+      }
+    }
+  },
+  "configuration_note": "random_seed is overridden by seed_start + trial_id for every trial",
+  "python_version": "3.12.14",
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.39",
+  "dependency_versions": {
+    "numpy": "2.3.5",
+    "matplotlib": "3.10.8"
+  },
+  "trial_executor": "experiments.baseline.run_experiment",
+  "calibration_status": "CALIBRATION NOT ESTABLISHED",
+  "data_source": "SYNTHETIC",
+  "reproducibility_exclusions": [
+    "processing_time_ms",
+    "processing_time_median_ms",
+    "processing_time_p90_ms",
+    "timestamp_utc"
+  ],
+  "standard_deviation": "population (ddof=0)",
+  "percentiles": "NumPy linear interpolation",
+  "coverage_denominator": "OK trials only; failure counts are reported separately",
+  "timing_scope": "existing estimator call only; failed/exception timings are not in timing summaries",
+  "artifact_note": "Only CSV rows define this batch; older trial_artifacts may remain after a shorter rerun"
+}

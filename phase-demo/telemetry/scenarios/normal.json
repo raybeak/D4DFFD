@@ -1,0 +1,9 @@
+{
+  "seed": 42,
+  "samples": 61,
+  "period": 0.5,
+  "delay_limit": 0.75,
+  "offline_after": 2.0,
+  "recovery_messages": 3,
+  "faults": {}
+}
